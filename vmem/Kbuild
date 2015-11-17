@@ -1,0 +1,2 @@
+obj-m:=vmem.o
+vmem-objs:=vmem_main.o vmem_sysfs_file.o

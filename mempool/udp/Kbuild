@@ -1,0 +1,3 @@
+obj-m:=send.o recv.o
+send-objs:=send_m.o
+recv-objs:=recv_m.o
