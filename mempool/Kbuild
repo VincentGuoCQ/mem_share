@@ -1,3 +1,2 @@
-obj-m:=vmem.o mempool.o
-vmem-objs:=vmem_main.o vmem_sysfs_file.o
+obj-m:= mempool.o
 mempool-objs:=mempool_main.o mempool_sysfs_file.o

@@ -1,6 +1,6 @@
 #define MEMPOOL
 
-#include "common.h"
+#include "../common.h"
 #include "userspace/errors.h"
 #include "userspace/msgfmt.h"
 

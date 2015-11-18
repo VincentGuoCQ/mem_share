@@ -1,6 +1,6 @@
 #define MEMPOOL
 
-#include "common.h"
+#include "../common.h"
 #include "userspace/errors.h"
 
 struct mempool_dev *Devices = NULL;
@@ -66,7 +66,7 @@ static void destory_device(struct mempool_dev *dev, int which) {
 	//destory block
 	for(nIndex = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL; nIndex++) {
 		if(dev->blk_info[nIndex].avail) {
-			kunmap(dev->blk_info[nIndex].blk_addr);
+			kunmap(dev->blk_info[nIndex].blk_pages);
 			__free_pages(dev->blk_info[nIndex].blk_pages, BLK_SIZE_SHIFT-PAGE_SHIFT);
 			dev->blk_info[nIndex].avail = FALSE;
 		}
