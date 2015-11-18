@@ -1,6 +1,6 @@
 #define VMEM
 
-#include "common.h"
+#include "../common.h"
 #include "userspace/errors.h"
 #include "userspace/msgfmt.h"
 
@@ -10,7 +10,7 @@ void IP_convert(struct in_addr *ip, unsigned char *str, unsigned int buflen) {
 	snprintf(str, buflen, "%d.%d.%d.%d", ((unsigned char *)&(ip->s_addr))[0], ((unsigned char *)&(ip->s_addr))[1], ((unsigned char *)&(ip->s_addr))[2], ((unsigned char *)&(ip->s_addr))[3]);
 }
 
-static ssize_t serhost_state_show(struct device *dev, struct device_attribute *attr, char *buf) {
+static ssize_t clihost_priser_show(struct device *dev, struct device_attribute *attr, char *buf) {
 	char *out = buf;
 	struct list_head *p = NULL;
 	struct server_host *ps = NULL;
@@ -32,9 +32,9 @@ static ssize_t serhost_state_show(struct device *dev, struct device_attribute *a
 	mutex_unlock(&Devices->lshd_avail_mutex);
 	return out - buf;
 }
-static DEVICE_ATTR_RO(serhost_state);
+static DEVICE_ATTR_RO(clihost_priser);
 
-static ssize_t serhost_op_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
+static ssize_t clihost_op_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
 	struct MsgCliOp * cliop = NULL;
 	struct server_host *serHost = NULL;
 	char IPaddr[IP_ADDR_LEN];
@@ -43,15 +43,16 @@ static ssize_t serhost_op_store(struct device *dev, struct device_attribute *att
 
 	if(count != sizeof(struct MsgCliOp)) {
 		printk(KERN_NOTICE"vmem:%s:illegal input\n", __FUNCTION__);
-		return 0;
+		return ERR_VMEM_ARG_ILLEGAL;
 	}
 	cliop = (struct MsgCliOp *)kmalloc(sizeof(struct MsgCliOp), GFP_KERNEL);
 	memcpy(cliop, buf, count);
 	IP_convert(&cliop->info.addser.host_addr, IPaddr, IP_ADDR_LEN);
-	printk(KERN_NOTICE"name:%s,addr:%s", cliop->info.addser.host_name, IPaddr);
 	switch(cliop->op) {
-		case CLIHOST_OP_ADD_SERHOST:
+		//add server
+		case CLIHOST_OP_ADD_SERHOST: {
 			printk(KERN_NOTICE"server add\n");
+			printk(KERN_NOTICE"name:%s,addr:%s", cliop->info.addser.host_name, IPaddr);
 			//allocate memory and copy to memory
 			serHost = (struct server_host *)kmem_cache_alloc(Devices->slab_server_host, GFP_KERNEL);
 			memset(serHost, 0, sizeof(struct server_host));
@@ -75,43 +76,69 @@ static ssize_t serhost_op_store(struct device *dev, struct device_attribute *att
 				mutex_unlock(&Devices->lshd_avail_mutex);
 			}
 			else {
-				goto err_ser_exit;
+				goto err_ser_exist;
 			}
 			break;
+		}
+		//map local memory
+		case CLIHOST_OP_MAP_LOCAL:{
+			int nCount = 0, nBlk = 0, nIndex = 0;
+			printk(KERN_NOTICE"map local\n");
+			nBlk = cliop->info.maplocal.block_num;
+			printk(KERN_NOTICE"map local num:%d\n", nBlk);
+			if(!Devices->addr_entry) {
+				goto err_null_ptr;
+			}
+			for(nIndex = 0; nIndex < BLK_NUM_MAX && nCount < cliop->info.maplocal.block_num; nIndex++) {
+				if(FALSE == (Devices->addr_entry[nIndex].mapped)) {
+					Devices->addr_entry[nIndex].entry.native.pages = alloc_pages(GFP_USER, BLK_SIZE_SHIFT-PAGE_SHIFT);
+					Devices->addr_entry[nIndex].entry.native.addr 
+						= kmap(Devices->addr_entry[nIndex].entry.native.pages);
+					Devices->addr_entry[nIndex].mapped = TRUE;
+					Devices->addr_entry[nIndex].native = TRUE;
+					nCount++;
+				} 
+			}
+			break;
+		}
 	}
 
 	kfree(cliop);
 	return count;
-err_ser_exit:
+err_ser_exist:
+	kfree(cliop);
 	return ERR_VMEM_HOST_EXIST;
+err_null_ptr:
+	kfree(cliop);
+	return ERR_VMEM_NULL_PTR;
 }
-static DEVICE_ATTR_WO(serhost_op);
+static DEVICE_ATTR_WO(clihost_op);
 
 int create_sysfs_file(struct device *dev) {
 	int ret = ERR_SUCCESS;
 	
-	ret = device_create_file(dev, &dev_attr_serhost_state);
+	ret = device_create_file(dev, &dev_attr_clihost_priser);
 	if (ret) {
 		printk(KERN_NOTICE"vmem:create sysfs file error: %d", ret);
 		ret = ERR_VMEM_CREATE_FILE;
-		goto err_sys_create_serhost_state;
+		goto err_sys_create_clihost_priser;
 	}
 
-	ret = device_create_file(dev, &dev_attr_serhost_op);
+	ret = device_create_file(dev, &dev_attr_clihost_op);
 	if (ret) {
 		printk(KERN_NOTICE"vmem:create sysfs file error: %d", ret);
 		ret = ERR_VMEM_CREATE_FILE;
-		goto err_sys_create_serhost_op;
+		goto err_sys_create_clihost_op;
 	}
 
 	return ret;
 
-err_sys_create_serhost_op:
-	device_create_file(dev, &dev_attr_serhost_state);
-err_sys_create_serhost_state:
+err_sys_create_clihost_op:
+	device_create_file(dev, &dev_attr_clihost_priser);
+err_sys_create_clihost_priser:
 	return ret;
 }
 void delete_sysfs_file(struct device *dev) {
-	device_remove_file(dev, &dev_attr_serhost_state);
-	device_remove_file(dev, &dev_attr_serhost_op);
+	device_remove_file(dev, &dev_attr_clihost_priser);
+	device_remove_file(dev, &dev_attr_clihost_op);
 }

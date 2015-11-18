@@ -134,13 +134,16 @@ struct vmem_blk {
 
 #define ADDR_SPACE_LEN  BLK_NUM_MAX_SHIFT+BLK_SIZE_SHIFT
 
-struct blk_table {
+struct cli_blk_table {
 	union {
 		struct vmem_blk * vmem;
-		void * native;
+		struct native_blk {
+			void *addr;
+			struct page *pages;
+		}native;
 	} entry;
 	bool:1;
-	bool inuse:1;
+	bool mapped:1;
 	bool native:1; 
 };
 
@@ -158,7 +161,7 @@ struct vmem_dev {
 	struct list_head lshd_inuse;
 	struct mutex lshd_inuse_mutex;
 	struct kmem_cache * slab_server_host;
-	struct blk_table * addr_entry;
+	struct cli_blk_table * addr_entry;
 };
 
 #endif

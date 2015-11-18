@@ -18,23 +18,14 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Tony ");
 
-char *ifname = "wlan0";
+char *ifname = "eth0";
 module_param(ifname, charp, 0644);
 MODULE_PARM_DESC(ifname, "Send packets from which net device");
 
-char *buffer = "Tony test from kernel!\n";
-module_param(buffer, charp, 0644);
-MODULE_PARM_DESC(buffer, "Packet content");
-
-__u32 dstip = 0xc0a80164;
-module_param(dstip, uint, 0644);
-
-__s16 dstport = 8000;
-module_param(dstport, short, 0644);
 
 long timeout = 1;
 module_param(timeout, long, 0644);
-MODULE_PARM_DESC(timeout, "Interval between send packets, default 1(unit second)");
+MODULE_PARM_DESC(timeout, "Interval between recv packets, default 1(unit second)");
 
 
 static struct task_struct *kthreadtask = NULL;
@@ -57,7 +48,7 @@ static int bind_to_device(struct socket *sock, char *ifname)
     addr = inet_select_addr(dev, 0, RT_SCOPE_UNIVERSE);
     sin.sin_family = AF_INET;
     sin.sin_addr.s_addr = addr;
-    sin.sin_port = 0;
+    sin.sin_port = cpu_to_be16(8000);
     err = sock->ops->bind(sock, (struct sockaddr*)&sin, sizeof(sin));
     if (err < 0) {
         printk(KERN_ALERT "sock bind err, err=%d\n", err);
@@ -66,50 +57,36 @@ static int bind_to_device(struct socket *sock, char *ifname)
     return 0;
 }
 
-static int connect_to_addr(struct socket *sock)
-{
-    int err;
-    daddr.sin_family = AF_INET;
-    daddr.sin_addr.s_addr = cpu_to_be32(dstip);
-    daddr.sin_port = cpu_to_be16(dstport);
-    err = sock->ops->connect(sock, (struct sockaddr*)&daddr,
-            sizeof(struct sockaddr), 0);
-    if (err < 0) {
-        printk(KERN_ALERT "sock connect err, err=%d\n", err);
-        return err;
-    }
-    return 0;
-}
-
 struct threadinfo{
     struct socket *sock;
-    char *buffer;
+	char buffer[100];
 };
 
-static int sendthread(void *data)
+static int recvthread(void *data)
 {
     struct kvec iov;
     struct threadinfo *tinfo = data;
     struct msghdr msg;
     int len;
-	msg.msg_name = (void *)&daddr;
-	msg.msg_namelen = sizeof(daddr);
+	msg.msg_name = NULL;
+	msg.msg_namelen = 0;
 	msg.msg_control = NULL;
 	msg.msg_controllen = 0;
-	msg.msg_flags = 0; 
     while (!kthread_should_stop()) {
         iov.iov_base = (void *)tinfo->buffer;
-        iov.iov_len = strlen(tinfo->buffer);
-        len = kernel_sendmsg(tinfo->sock, &msg, &iov, 1, strlen(tinfo->buffer));
-        if (len != strlen(buffer)) {
-            printk(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%d\n",
-                    len, (int)strlen(buffer));
+        iov.iov_len = 100;
+        len = kernel_recvmsg(tinfo->sock, &msg, &iov, 1, 100, MSG_DONTWAIT);
+        if (len < 0) {
+            printk(KERN_ALERT "kernel_recvmsg err, len=%d, buffer=%ld\n",
+                    len, sizeof(tinfo->buffer));
             if (len == -ECONNREFUSED) {
                 printk(KERN_ALERT "Receive Port Unreachable packet!\n");
             }
             //break;
         }
-        printk(KERN_ALERT "kernel_sendmsg: len=%d\n", len);
+		else {
+			printk(KERN_ALERT"%s\n", tinfo->buffer);
+		}
         schedule_timeout_interruptible(timeout * HZ);
     }
     kthreadtask = NULL;
@@ -119,7 +96,7 @@ static int sendthread(void *data)
     return 0;
 }
 
-static int __init udp_send_init(void)
+static int __init udp_recv_init(void)
 {
     int err = 0;
     struct socket *sock;
@@ -138,11 +115,11 @@ static int __init udp_send_init(void)
         printk(KERN_ALERT "Bind to %s err, err=%d\n", ifname, err);
         goto bind_error;
     }    
-    err = connect_to_addr(sock);
-    if (err < 0) {
-        printk(KERN_ALERT "sock connect err, err=%d\n", err);
-        goto connect_error;
-    }
+//    err = connect_to_addr(sock);
+//    if (err < 0) {
+//        printk(KERN_ALERT "sock connect err, err=%d\n", err);
+//        goto connect_error;
+//    }
     
     tinfo = kmalloc(sizeof(struct threadinfo), GFP_KERNEL);
     if (!tinfo) {
@@ -150,11 +127,10 @@ static int __init udp_send_init(void)
         goto kmalloc_error;
     }
     tinfo->sock = sock;
-    tinfo->buffer = buffer;
-    kthreadtask = kthread_run(sendthread, tinfo, "Tony-sendmsg");
+    kthreadtask = kthread_run(recvthread, tinfo, "Tony-recvmsg");
 
     if (IS_ERR(kthreadtask)) {
-        printk(KERN_ALERT "create sendmsg thread err, err=%ld\n",
+        printk(KERN_ALERT "create recvmsg thread err, err=%ld\n",
                 PTR_ERR(kthreadtask));
         goto thread_error;
     }
@@ -164,24 +140,23 @@ thread_error:
     kfree(tinfo);
 kmalloc_error:
 bind_error:
-connect_error:
     sk_release_kernel(sock->sk);
     kthreadtask = NULL;
 create_error:
     return -1;
 }
 
-static void __exit udp_send_exit(void)
+static void __exit udp_recv_exit(void)
 {
     
     if (kthreadtask) {
         kthread_stop(kthreadtask);
     }
-    printk(KERN_ALERT "UDP send quit\n");
+    printk(KERN_ALERT "UDP recv quit\n");
 
     return;
 }
 
 
-module_init(udp_send_init);
-module_exit(udp_send_exit); 
+module_init(udp_recv_init);
+module_exit(udp_recv_exit); 

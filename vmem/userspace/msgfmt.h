@@ -8,6 +8,7 @@
 #define CLIHOST_OP_ADD_SERHOST		0x1
 #define CLIHOST_OP_DEL_SERHOST		0x2
 #define CLIHOST_OP_MOD_SERHOST		0x4
+#define CLIHOST_OP_MAP_LOCAL		0x8
 
 struct MsgCliOp {
 	unsigned int op;
@@ -17,6 +18,9 @@ struct MsgCliOp {
 			struct in_addr host_addr;
 			unsigned int block_num;
 		} addser;
+		struct {
+			unsigned int block_num;
+		} maplocal;
 	} info;
 };
 

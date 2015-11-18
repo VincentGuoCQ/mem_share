@@ -20,5 +20,8 @@ int main (int argc, char *argv[]) {
 	else {
 		printf("command error, please input correct command:%d\n", i);
 	}
-	return ret;
+	if(ERR_SUCCESS != ret) {
+		printf("command format or execute error\n");
+	}
+	return 0;
 }

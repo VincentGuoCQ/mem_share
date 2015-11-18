@@ -114,7 +114,8 @@ int vmem_add_server(int argc, char *argv[]) {
 	pCli->op = CLIHOST_OP_ADD_SERHOST;
 
 	//write to file
-	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH, SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_SERADD_PATH);
+	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
+				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_CLI_OP_PATH);
 	write_sysfs_attribute(path, (char *)pCli, sizeof(struct MsgCliOp));
 
 err_args:
@@ -125,7 +126,8 @@ err_args:
 int vmem_print_server(int argc, char *argv[]) {
 	char path[SYSFS_PATH_MAX];
 	memset(path, 0, SYSFS_PATH_MAX);
-	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH, SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_SERPRI_PATH);
+	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
+				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_CLI_PRISER_PATH);
 	
 	print_sysfs_attribute(path);
 	return 0;
@@ -133,4 +135,48 @@ int vmem_print_server(int argc, char *argv[]) {
 
 int vmem_delete_server(int argc, char *argv[]) {
 
+}
+int vmem_map_local(int argc, char *argv[]) {
+	int opt = 0;
+	char *blknum = NULL;
+	struct MsgCliOp * pCli= (struct MsgCliOp *)malloc(sizeof(struct MsgCliOp));
+	int ret = ERR_SUCCESS;
+	char path[SYSFS_PATH_MAX];
+	memset(pCli, 0, sizeof(struct MsgCliOp));
+	memset(path, 0, SYSFS_PATH_MAX);
+
+	//option parse
+	for(;;) {
+		opt = getopt_long(argc, argv, "n:", maplocal_opt, NULL);
+		if(-1 == opt) {
+			break;
+		}
+
+		switch(opt) {
+			case 'n':
+				DEBUG_INFO("block num:%s", optarg);
+				blknum = optarg;
+				break;
+		}
+	}
+	if(NULL == blknum) {
+		ret = ERR_CLI_ARG_ILLEGAL;
+		goto err_args;
+	}
+	
+	//copy argument to structure
+	if((pCli->info.maplocal.block_num = atoi(blknum)) == 0) {
+		ret = ERR_CLI_ARG_ILLEGAL;
+		goto err_args;
+	}
+	pCli->op = CLIHOST_OP_MAP_LOCAL;
+	
+	//write to file
+	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
+				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_CLI_OP_PATH);
+	write_sysfs_attribute(path, (char *)pCli, sizeof(struct MsgCliOp));
+
+err_args:
+	free(pCli);
+	return ret;
 }

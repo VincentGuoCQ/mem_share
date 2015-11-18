@@ -7,7 +7,7 @@
 #define SYSFS_BLKDEV_PATH "block"
 #define SYSFS_DEV_PATH "vmem"
 
-#define SYSFS_SERADD_PATH "serhost_op"
-#define SYSFS_SERPRI_PATH "serhost_state"
+#define SYSFS_CLI_OP_PATH "clihost_op"
+#define SYSFS_CLI_PRISER_PATH "clihost_priser"
 
 #endif //VMEM_COMMON_H

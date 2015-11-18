@@ -7,5 +7,7 @@
 
 #define ERR_VMEM_CREATE_FILE -3
 #define ERR_VMEM_HOST_EXIST -4
+#define ERR_VMEM_NULL_PTR -5
+#define ERR_VMEM_ARG_ILLEGAL -6
 
 #endif //ERRORS_H

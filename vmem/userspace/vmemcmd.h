@@ -9,6 +9,7 @@
 int vmem_add_server(int argc, char *argv[]);
 int vmem_print_server(int argc, char *argv[]);
 int vmem_delete_server(int argc, char *argv[]);
+int vmem_map_local(int argc, char *argv[]);
 
 static const struct option addser_opt [] = {
 	{"name",	required_argument,	NULL,	'n'},
@@ -16,7 +17,10 @@ static const struct option addser_opt [] = {
 	{"blk",		required_argument,	NULL,	'b'},
 	{NULL,	0,	NULL,	0}
 };
-
+static const struct option maplocal_opt [] = {
+	{"num",		required_argument,	NULL,	'n'},
+	{NULL,	0,	NULL,	0}
+};
 struct command {
 	const char *name;
 	int (*fn)(int argc, char *argv[]);
@@ -42,6 +46,12 @@ static const struct command cmds[] = {
 		.fn	   = vmem_delete_server,
 		.help  = NULL,
 		.usage = NULL
+	},
+	{
+		.name  = "maplocal",
+		.fn	   = vmem_map_local,
+		.help  = NULL,
+		.usage = NULL,
 	},
 	{NULL, NULL, NULL, NULL}
 };
