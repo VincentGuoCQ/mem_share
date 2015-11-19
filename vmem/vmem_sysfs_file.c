@@ -6,6 +6,20 @@
 
 extern struct vmem_dev *Devices;
 
+char * blk_state_str[] = {
+	"null",
+	"native",
+	"mapped",
+	NULL,
+};
+unsigned int state_to_str(struct cli_blk * blk) {
+	if(blk->mapped)
+	  return 2;
+	if(blk->native)
+	  return 1;
+	return 0;
+}
+
 void IP_convert(struct in_addr *ip, unsigned char *str, unsigned int buflen) {
 	snprintf(str, buflen, "%d.%d.%d.%d", ((unsigned char *)&(ip->s_addr))[0], ((unsigned char *)&(ip->s_addr))[1], ((unsigned char *)&(ip->s_addr))[2], ((unsigned char *)&(ip->s_addr))[3]);
 }
@@ -33,6 +47,25 @@ static ssize_t clihost_priser_show(struct device *dev, struct device_attribute *
 	return out - buf;
 }
 static DEVICE_ATTR_RO(clihost_priser);
+
+static ssize_t clihost_priblk_show(struct device *dev, struct device_attribute *attr, char *buf) {
+	char *out = buf;
+	int nIndex = 0;
+
+	if(!Devices) {
+		return 0;
+	}
+	
+	out += sprintf(out, "Block Index\tState\tAddress\n");
+	out += sprintf(out, "----------------------------------\n");
+	for(nIndex = 0; nIndex < BLK_NUM_MAX; nIndex++) {
+		out += sprintf(out, "%d\t\t%s\t", nIndex, blk_state_str[state_to_str(&Devices->addr_entry[nIndex])]);
+		out += sprintf(out, "%lx\n", (unsigned long)Devices->addr_entry[nIndex].entry.native.addr);
+	}
+	return out - buf;
+}
+	
+static DEVICE_ATTR_RO(clihost_priblk);
 
 static ssize_t clihost_op_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
 	struct MsgCliOp * cliop = NULL;
@@ -131,14 +164,23 @@ int create_sysfs_file(struct device *dev) {
 		goto err_sys_create_clihost_op;
 	}
 
+	ret = device_create_file(dev, &dev_attr_clihost_priblk);
+	if (ret) {
+		printk(KERN_NOTICE"vmem:create sysfs file error: %d", ret);
+		ret = ERR_VMEM_CREATE_FILE;
+		goto err_sys_create_clihost_priblk;
+	}
 	return ret;
 
+err_sys_create_clihost_priblk:
+	device_remove_file(dev, &dev_attr_clihost_op);
 err_sys_create_clihost_op:
-	device_create_file(dev, &dev_attr_clihost_priser);
+	device_remove_file(dev, &dev_attr_clihost_priser);
 err_sys_create_clihost_priser:
 	return ret;
 }
 void delete_sysfs_file(struct device *dev) {
 	device_remove_file(dev, &dev_attr_clihost_priser);
 	device_remove_file(dev, &dev_attr_clihost_op);
+	device_remove_file(dev, &dev_attr_clihost_priblk);
 }

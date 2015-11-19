@@ -4,7 +4,7 @@
 #include "userspace/errors.h"
 
 struct vmem_dev *Devices = NULL;
-struct cli_blk_table blktable[BLK_NUM_MAX];
+struct cli_blk blktable[BLK_NUM_MAX];
 
 static int vmem_open(struct block_device *bdev, fmode_t mode) {
 	struct vmem_dev * dev = bdev->bd_disk->private_data;
