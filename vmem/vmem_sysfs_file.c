@@ -33,10 +33,10 @@ static ssize_t clihost_priser_show(struct device *dev, struct device_attribute *
 	if(!Devices) {
 		return 0;
 	}
-	
+
 	out += sprintf(out, "Server Name\t\tIP Address\t\t Block Num\n");
 	out += sprintf(out, "----------------------------------\n");
-	
+
 	mutex_lock(&Devices->lshd_avail_mutex);
 	list_for_each(p, &Devices->lshd_available) {
 		ps = list_entry(p, struct server_host, ls_available);
