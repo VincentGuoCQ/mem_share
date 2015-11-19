@@ -38,6 +38,8 @@
 #define BLK_NUM_MAX_SHIFT	3
 #define BLK_NUM_MAX		(1UL << BLK_NUM_MAX_SHIFT)
 
+#define VPAGE_NUM_IN_BLK	(1UL << (BLK_SIZE_SHIFT - VPAGE_SIZE_SHIFT))
+
 #define HOST_NAME_LEN		32
 #define IP_ADDR_LEN			16
 
