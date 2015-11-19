@@ -43,7 +43,7 @@
 #define HOST_NAME_LEN		32
 #define IP_ADDR_LEN			16
 
-#define MAX_BLK_NUM_IN_MEMPOOL	(1UL << 2)		
+#define MAX_BLK_NUM_IN_MEMPOOL	(1UL << 2)
 
 #ifdef VMEM
 static int vmem_major = 0;
@@ -147,7 +147,7 @@ struct cli_blk {
 	bool:1;
 	bool mapped:1;
 	bool native:1;
-	bool page_bitmap[];
+	bool page_bitmap[VPAGE_NUM_IN_BLK];
 };
 
 struct vmem_dev {
