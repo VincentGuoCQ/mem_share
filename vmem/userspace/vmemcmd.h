@@ -8,6 +8,7 @@
 
 int vmem_add_server(int argc, char *argv[]);
 int vmem_print_server(int argc, char *argv[]);
+int vmem_print_block(int argc, char *argv[]);
 int vmem_delete_server(int argc, char *argv[]);
 int vmem_map_local(int argc, char *argv[]);
 
@@ -38,6 +39,12 @@ static const struct command cmds[] = {
 	{
 		.name  = "priser",
 		.fn	   = vmem_print_server,
+		.help  = NULL,
+		.usage = NULL
+	},
+	{
+		.name  = "priblk",
+		.fn	   = vmem_print_block,
 		.help  = NULL,
 		.usage = NULL
 	},

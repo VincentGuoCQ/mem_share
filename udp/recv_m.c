@@ -102,7 +102,7 @@ static int __init udp_recv_init(void)
     struct socket *sock;
     struct threadinfo *tinfo;
 
-    err = sock_create_kern(PF_INET, SOCK_DGRAM, IPPROTO_UDP, &sock);
+    err = sock_create_kern(PF_INET, SOCK_STREAM, IPPROTO_TCP, &sock);
     if (err < 0) {
         printk(KERN_ALERT "UDP create sock err, err=%d\n", err);
         goto create_error;
@@ -115,18 +115,23 @@ static int __init udp_recv_init(void)
         printk(KERN_ALERT "Bind to %s err, err=%d\n", ifname, err);
         goto bind_error;
     }    
-//    err = connect_to_addr(sock);
-//    if (err < 0) {
-//        printk(KERN_ALERT "sock connect err, err=%d\n", err);
-//        goto connect_error;
-//    }
+    err = kernel_listen(sock, 5);
+    if (err < 0) {
+        printk(KERN_ALERT "sock listen err, err=%d\n", err);
+        goto listen_error;
+    }
     
     tinfo = kmalloc(sizeof(struct threadinfo), GFP_KERNEL);
     if (!tinfo) {
         printk(KERN_ALERT "kmalloc threadinfo err\n");
         goto kmalloc_error;
     }
-    tinfo->sock = sock;
+    err = kernel_accept(sock, &tinfo->sock, 0);
+    if (err < 0) {
+        printk(KERN_ALERT "sock accept err, err=%d\n", err);
+        goto accept_error;
+	}
+
     kthreadtask = kthread_run(recvthread, tinfo, "Tony-recvmsg");
 
     if (IS_ERR(kthreadtask)) {
@@ -138,7 +143,9 @@ static int __init udp_recv_init(void)
 
 thread_error:
     kfree(tinfo);
+accept_error:
 kmalloc_error:
+listen_error:
 bind_error:
     sk_release_kernel(sock->sk);
     kthreadtask = NULL;

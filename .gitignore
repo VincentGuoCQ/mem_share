@@ -7,3 +7,4 @@ modules.order
 tags
 *.ko
 *.mod.c
+*.swo

@@ -58,7 +58,9 @@
 #define HOST_NAME_LEN		32
 #define IP_ADDR_LEN			16
 
-#define MAX_BLK_NUM_IN_MEMPOOL	(1UL << 2)
+#define MAX_BLK_NUM_IN_MEMPOOL	(1UL << 3)
+
+#define SERHOST_LISTEN_PORT	8000
 
 #ifdef VMEM
 static int vmem_major = 0;
@@ -142,26 +144,38 @@ struct mempool_dev {
 #endif
 
 #ifdef VMEM
+
+//the period for re-calculate the precent of free pages, in seconds
+#define CALCULATE_PERIOD 5
+//the precentage for the daemon thread to trigger memory borrow
+#define UPPER_LIMIT_PRECENT 0.8
+//the precentage for the daemon thread to trigger memory return
+#define LOWER_LIMIT_PRECENT 0.2
+
 struct server_host {
 	struct list_head ls_available;
 	struct list_head ls_inuse;
 	char host_name[HOST_NAME_LEN];
-	struct in_addr host_addr;
+	struct sockaddr_in host_addr;
 	unsigned int block_num; 
 	unsigned int state;
+	struct task_struct *HandleThread;
+	struct socket *sock;
 };
 
 struct vmem_blk {
-	struct server_host sh_info;
+	struct server_host *serhost;
 	bool:1;
 	bool inuse:1;
 	unsigned long blk_start_pos;
 	unsigned long blk_size;
+	struct task_struct *HandleThread;
 };
 
 #define ADDR_SPACE_LEN  BLK_NUM_MAX_SHIFT+BLK_SIZE_SHIFT
 
 struct cli_blk {
+	struct mutex handle_mutex;
 	union {
 		struct vmem_blk * vmem;
 		struct native_blk {
@@ -173,6 +187,7 @@ struct cli_blk {
 	bool mapped:1;
 	bool native:1;
 	bool page_bitmap[VPAGE_NUM_IN_BLK];
+	unsigned int inuse_count;
 };
 
 struct vmem_dev {
@@ -190,7 +205,10 @@ struct vmem_dev {
 	struct mutex lshd_inuse_mutex;
 	struct kmem_cache * slab_server_host;
 	struct cli_blk * addr_entry;
+	struct task_struct *DaemonThread;
 };
+
+int vmem_daemon(void *);
 
 #endif
 
