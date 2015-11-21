@@ -128,6 +128,16 @@ int vmem_print_server(int argc, char *argv[]) {
 	memset(path, 0, SYSFS_PATH_MAX);
 	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
 				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_CLI_PRISER_PATH);
+
+	print_sysfs_attribute(path);
+	return 0;
+}
+
+int vmem_print_block(int argc, char *argv[]) {
+	char path[SYSFS_PATH_MAX];
+	memset(path, 0, SYSFS_PATH_MAX);
+	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
+				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_CLI_PRIBLK_PATH);
 	
 	print_sysfs_attribute(path);
 	return 0;

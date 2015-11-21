@@ -133,6 +133,10 @@ static void destory_device(struct vmem_dev *dev, int which) {
 		return;
 	}
 	del_timer_sync(&dev->timer);
+	//kill daemon thread
+	if(dev->DaemonThread) {
+		kthread_stop(dev->DaemonThread);
+	}
 	//destroy native block
 	for(nIndex = 0; nIndex < BLK_NUM_MAX; nIndex++) {
 		if(dev->addr_entry[nIndex].mapped && dev->addr_entry[nIndex].native) {
@@ -177,7 +181,7 @@ static void destory_device(struct vmem_dev *dev, int which) {
 }
 
 static void setup_device(struct vmem_dev *dev, int which) {
-	int err = 0;
+	int err = 0, nIndex = 0;
 	memset(dev, 0, sizeof(struct vmem_dev));
 
 	INIT_LIST_HEAD(&dev->lshd_available);
@@ -255,7 +259,14 @@ static void setup_device(struct vmem_dev *dev, int which) {
 
 	//init block table
 	memset(blktable, 0, sizeof(blktable));
+	for(nIndex = 0; nIndex < BLK_NUM_MAX; nIndex++) {
+		mutex_init(&blktable[nIndex].handle_mutex);
+		blktable[nIndex].inuse_count = 0;
+	}
 	dev->addr_entry = blktable;
+	//init daemon thread
+	dev->DaemonThread = kthread_create(vmem_daemon, (void *)dev, "vmem daemon");
+	wake_up_process(dev->DaemonThread);
 	return;
 
 err_serhost_slab:

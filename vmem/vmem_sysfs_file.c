@@ -40,7 +40,7 @@ static ssize_t clihost_priser_show(struct device *dev, struct device_attribute *
 	mutex_lock(&Devices->lshd_avail_mutex);
 	list_for_each(p, &Devices->lshd_available) {
 		ps = list_entry(p, struct server_host, ls_available);
-		IP_convert(&ps->host_addr, IPaddr, IP_ADDR_LEN);
+		IP_convert(&ps->host_addr.sin_addr, IPaddr, IP_ADDR_LEN);
 		out += sprintf(out, "%s\t\t%s\t\t%d\n", ps->host_name, IPaddr, ps->block_num);
 	}
 	mutex_unlock(&Devices->lshd_avail_mutex);
@@ -59,8 +59,10 @@ static ssize_t clihost_priblk_show(struct device *dev, struct device_attribute *
 	out += sprintf(out, "Block Index\tState\tAddress\n");
 	out += sprintf(out, "----------------------------------\n");
 	for(nIndex = 0; nIndex < BLK_NUM_MAX; nIndex++) {
+		mutex_lock(&Devices->addr_entry[nIndex].handle_mutex);
 		out += sprintf(out, "%d\t\t%s\t", nIndex, blk_state_str[state_to_str(&Devices->addr_entry[nIndex])]);
 		out += sprintf(out, "%lx\n", (unsigned long)Devices->addr_entry[nIndex].entry.native.addr);
+		mutex_unlock(&Devices->addr_entry[nIndex].handle_mutex);
 	}
 	return out - buf;
 }
@@ -90,7 +92,7 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 			serHost = (struct server_host *)kmem_cache_alloc(Devices->slab_server_host, GFP_KERNEL);
 			memset(serHost, 0, sizeof(struct server_host));
 			memcpy(serHost->host_name, cliop->info.addser.host_name, HOST_NAME_LEN);
-			memcpy(&serHost->host_addr, &cliop->info.addser.host_addr, sizeof(struct in_addr));
+			memcpy(&serHost->host_addr.sin_addr, &cliop->info.addser.host_addr, sizeof(struct in_addr));
 			memcpy(&serHost->block_num, &cliop->info.addser.block_num, sizeof(unsigned int));
 			//search for existing
 			mutex_lock(&Devices->lshd_avail_mutex);
@@ -122,13 +124,17 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 			if(!Devices->addr_entry) {
 				goto err_null_ptr;
 			}
-			for(nIndex = 0; nIndex < BLK_NUM_MAX && nCount < cliop->info.maplocal.block_num; nIndex++) {
+			for(nIndex = 0; nIndex < BLK_NUM_MAX && 
+						nCount < cliop->info.maplocal.block_num; nIndex++) {
 				if(FALSE == (Devices->addr_entry[nIndex].mapped)) {
-					Devices->addr_entry[nIndex].entry.native.pages = alloc_pages(GFP_USER, BLK_SIZE_SHIFT-PAGE_SHIFT);
+					mutex_lock(&Devices->addr_entry[nIndex].handle_mutex);
+					Devices->addr_entry[nIndex].entry.native.pages =
+						alloc_pages(GFP_USER, BLK_SIZE_SHIFT-PAGE_SHIFT);
 					Devices->addr_entry[nIndex].entry.native.addr 
 						= kmap(Devices->addr_entry[nIndex].entry.native.pages);
 					Devices->addr_entry[nIndex].mapped = TRUE;
 					Devices->addr_entry[nIndex].native = TRUE;
+					mutex_unlock(&Devices->addr_entry[nIndex].handle_mutex);
 					nCount++;
 				} 
 			}
