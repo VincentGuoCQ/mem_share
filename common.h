@@ -25,6 +25,21 @@
 #include <linux/socket.h>
 #include <linux/list.h>
 #include <linux/in.h>
+#include <linux/kthread.h>
+
+#include <linux/module.h>
+#include <linux/moduleparam.h>
+#include <linux/netfilter.h>
+#include <linux/ip.h>
+#include <net/tcp.h>
+#include <net/udp.h>
+#include <net/icmp.h>
+#include <linux/skbuff.h>
+#include <net/sock.h>
+#include <linux/net.h>
+#include <linux/inetdevice.h>
+#include <linux/types.h>
+#include <asm/unaligned.h>
 
 #define VMEM_NAME				"vmem"
 #define MEMPOOL_NAME			"mempool"
@@ -84,20 +99,27 @@ module_param(request_mode, int, RM_SIMPLE);
 
 #ifdef MEMPOOL
 
+#define LISTEM_MAX_QUEUE 5
+#define MEMPOOL_IF_NAME "eth0"
 struct mempool_blk {
 	bool avail:1;
 	bool inuse:1;
+	struct client_host * clihost;
 	void *blk_addr;
 	struct page * blk_pages;
 };
 
+#define CLIHOST_STATE_CONNECTED 1
 struct client_host {
 	struct list_head ls_rent;
-	struct mutex lshd_rent_client;
+	struct list_head lshd_msgqueue;
+	struct mutex lshd_msgqueue_mutex;
 	char host_name[HOST_NAME_LEN];
-	struct in_addr host_addr;
+	struct sockaddr_in host_addr;
 	unsigned int block_num; 
 	unsigned int state;
+	struct socket *sock;
+	struct task_struct *handlethread;
 };
 
 struct mempool_dev {
@@ -109,9 +131,12 @@ struct mempool_dev {
 	struct list_head lshd_rent_client;
 	struct mutex lshd_rent_client_mutex;
 
-	struct mempool_blk blk_info[MAX_BLK_NUM_IN_MEMPOOL];
+	struct mempool_blk blk[MAX_BLK_NUM_IN_MEMPOOL];
 
 	struct kmem_cache * slab_client_host;
+
+	struct socket * listen_sock;
+	struct task_struct *ListenThread;
 };
 
 #endif
@@ -169,7 +194,7 @@ struct vmem_dev {
 
 #endif
 
-
+int mempool_listen_thread(void *data);
 int create_sysfs_file(struct device *dev);
 void delete_sysfs_file(struct device *dev);
 

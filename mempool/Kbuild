@@ -1,2 +1,2 @@
 obj-m:= mempool.o
-mempool-objs:=mempool_main.o mempool_sysfs_file.o
+mempool-objs:=mempool_main.o mempool_sysfs_file.o mempool_net.o

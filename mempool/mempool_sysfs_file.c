@@ -39,7 +39,7 @@ static ssize_t clihost_state_show(struct device *dev, struct device_attribute *a
 	mutex_lock(&Devices->lshd_rent_client_mutex);
 	list_for_each(p, &Devices->lshd_rent_client) {
 		ps = list_entry(p, struct client_host, ls_rent);
-		IP_convert(&ps->host_addr, IPaddr, IP_ADDR_LEN);
+		IP_convert(&ps->host_addr.sin_addr, IPaddr, IP_ADDR_LEN);
 		out += sprintf(out, "%s\t\t%s\t\t%d\n", ps->host_name, IPaddr, ps->block_num);
 	}
 	mutex_unlock(&Devices->lshd_rent_client_mutex);
@@ -58,8 +58,8 @@ static ssize_t blk_state_show(struct device *dev, struct device_attribute *attr,
 	out += sprintf(out, "----------------------------------\n");
 	for(nIndex = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL; nIndex++) {
 		out += sprintf(out, "%d\t", nIndex);
-		out += sprintf(out, "%s\t\t", blk_state_str[state_to_str(&(Devices->blk_info[nIndex]))]);
-		out += sprintf(out, "%lx\t%ld\n", (unsigned long)Devices->blk_info[nIndex].blk_addr, BLK_SIZE);
+		out += sprintf(out, "%s\t\t", blk_state_str[state_to_str(&(Devices->blk[nIndex]))]);
+		out += sprintf(out, "%lx\t%ld\n", (unsigned long)Devices->blk[nIndex].blk_addr, BLK_SIZE);
 	}
 	return out - buf;
 }
@@ -78,13 +78,14 @@ static ssize_t serhost_cfg_store(struct device *dev, struct device_attribute *at
 	switch(serop->op) {
 		int nCount = 0;
 		unsigned int nIndex = 0;
+		//add available block
 		case SERHOST_OP_ADD_BLK:
 			printk(KERN_NOTICE"mempool:add block called\n");
 			for(nIndex = 0, nCount = 0; (nIndex < MAX_BLK_NUM_IN_MEMPOOL) && (nCount < serop->info.addblk.block_num); nIndex++) {
-				if(!Devices->blk_info[nIndex].avail) {
-					Devices->blk_info[nIndex].blk_pages = alloc_pages(GFP_USER, BLK_SIZE_SHIFT-PAGE_SHIFT);
-					Devices->blk_info[nIndex].blk_addr = kmap(Devices->blk_info[nIndex].blk_pages);
-					Devices->blk_info[nIndex].avail = TRUE;
+				if(!Devices->blk[nIndex].avail) {
+					Devices->blk[nIndex].blk_pages = alloc_pages(GFP_USER, BLK_SIZE_SHIFT-PAGE_SHIFT);
+					Devices->blk[nIndex].blk_addr = kmap(Devices->blk[nIndex].blk_pages);
+					Devices->blk[nIndex].avail = TRUE;
 					nCount++;
 				}
 			}

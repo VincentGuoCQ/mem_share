@@ -1,6 +1,7 @@
 #define MEMPOOL
 
 #include "../common.h"
+#include "../kererr.h"
 #include "userspace/errors.h"
 
 struct mempool_dev *Devices = NULL;
@@ -56,30 +57,44 @@ static void mempool_make_request(struct request_queue *q, struct bio *bio) {
 }
 static void destory_device(struct mempool_dev *dev, int which) {
 	struct list_head *p = NULL, *next = NULL;
-	struct client_host *ps = NULL;
+	struct client_host *clihost = NULL;
 	int nIndex = 0;
 	
 	if(!dev) {
 		return;
 	}
 	del_timer_sync(&dev->timer);
+	
+	//destory listen socket thread
+	kthread_stop(dev->ListenThread);
+	if(dev->listen_sock) {
+		sock_release(dev->listen_sock);
+		dev->listen_sock = NULL;
+	}
+
 	//destory block
 	for(nIndex = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL; nIndex++) {
-		if(dev->blk_info[nIndex].avail) {
-			kunmap(dev->blk_info[nIndex].blk_pages);
-			__free_pages(dev->blk_info[nIndex].blk_pages, BLK_SIZE_SHIFT-PAGE_SHIFT);
-			dev->blk_info[nIndex].avail = FALSE;
+		if(dev->blk[nIndex].avail) {
+			kunmap(dev->blk[nIndex].blk_pages);
+			__free_pages(dev->blk[nIndex].blk_pages, BLK_SIZE_SHIFT-PAGE_SHIFT);
+			dev->blk[nIndex].avail = FALSE;
 		}
 	}
-	//destroy list
+	//destroy client list
 	mutex_lock(&dev->lshd_rent_client_mutex);
 	list_for_each_safe(p, next, &dev->lshd_rent_client) {
-		ps = list_entry(p, struct client_host, ls_rent);
-		list_del(&ps->ls_rent);
-		kmem_cache_free(dev->slab_client_host, ps);
+		clihost = list_entry(p, struct client_host, ls_rent);
+
+		if(clihost->sock) {	
+			sock_release(clihost->sock);
+			clihost->sock = NULL;
+		}
+		kthread_stop(clihost->handlethread);
+		list_del(&clihost->ls_rent);
+		kmem_cache_free(dev->slab_client_host, clihost);
 	}
 	mutex_unlock(&dev->lshd_rent_client_mutex);
-	//delete slab
+	//delete client slab
 	if(dev->slab_client_host) {
 		kmem_cache_destroy(dev->slab_client_host);
 	}
@@ -94,8 +109,8 @@ static void destory_device(struct mempool_dev *dev, int which) {
 	}
 }
 
-static void setup_device(struct mempool_dev *dev, int which) {
-	int err = 0;
+static int setup_device(struct mempool_dev *dev, int which) {
+	int ret = KERERR_SUCCESS;
 	int nIndex = 0;
 	memset(dev, 0, sizeof(struct mempool_dev));
 
@@ -113,6 +128,7 @@ static void setup_device(struct mempool_dev *dev, int which) {
 		case RM_NOQUEUE:
 			dev->queue = blk_alloc_queue(GFP_KERNEL);
 			if(dev->queue == NULL) {
+				ret = KERERR_ALLOC;
 				goto err_alloc;
 			}
 			blk_queue_make_request(dev->queue, mempool_make_request);
@@ -122,6 +138,7 @@ static void setup_device(struct mempool_dev *dev, int which) {
 		case RM_SIMPLE:
 			dev->queue = blk_init_queue(mempool_request, &dev->lock);
 			if(dev->queue == NULL) {
+				ret = KERERR_ALLOC;
 				goto err_alloc;
 			}
 			break;
@@ -134,6 +151,7 @@ static void setup_device(struct mempool_dev *dev, int which) {
 	dev->gd = alloc_disk(mempool_minor);
 	if(!dev->gd) {
 		printk(KERN_NOTICE"mempool:alloc_disk failure");
+		ret = KERERR_ALLOC;
 		goto err_alloc;
 	}
 
@@ -148,9 +166,10 @@ static void setup_device(struct mempool_dev *dev, int which) {
 	add_disk(dev->gd);
 
 	//create sysfs file
-	err = create_sysfs_file(disk_to_dev(dev->gd));
-	if(err == -ERR_VMEM_CREATE_FILE) {
+	ret = create_sysfs_file(disk_to_dev(dev->gd));
+	if(ret == ERR_VMEM_CREATE_FILE) {
 		printk(KERN_NOTICE"mempool:create sysfs file fail\n");
+		ret = KERERR_CREATE_FILE;
 		goto err_sysfs_create;
 	}
 
@@ -158,6 +177,7 @@ static void setup_device(struct mempool_dev *dev, int which) {
 	dev->slab_client_host = kmem_cache_create("mempool_clihost", sizeof(struct client_host), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
 	if(NULL == dev->slab_client_host) {
 		printk(KERN_NOTICE"mempool:create mempool_clihost slab fail\n");
+		ret = KERERR_CREATE_SLAB;
 		goto err_clihost_slab;
 	}
 	//init mutex
@@ -165,49 +185,58 @@ static void setup_device(struct mempool_dev *dev, int which) {
 
 	//init blk
 	for(nIndex = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL; nIndex++) {
-		dev->blk_info[nIndex].avail = FALSE;
-		dev->blk_info[nIndex].blk_addr = NULL;
-		dev->blk_info[nIndex].blk_pages = NULL;
+		dev->blk[nIndex].avail = FALSE;
+		dev->blk[nIndex].blk_addr = NULL;
+		dev->blk[nIndex].blk_pages = NULL;
+		dev->blk[nIndex].clihost = NULL;
 	}
+	//create listen socket thread
+	dev->ListenThread = kthread_create(mempool_listen_thread, (void *)dev, "mempool listen daemon");
+	if (IS_ERR(dev->ListenThread)) {
+		printk(KERN_ALERT "create recvmsg thread err, err=%ld\n", PTR_ERR(dev->ListenThread));
+		ret = KERERR_CREATE_THREAD;
+		goto err_create_thread;
+	}
+	wake_up_process(dev->ListenThread);
 	printk(KERN_NOTICE"mempool:mempool_create\n");
 
-	return;
-
+	return ret;
+err_create_thread:
 err_clihost_slab:
 err_sysfs_create:
 err_alloc:
-	return;
+	return ret;
 }
 
 static int __init mempool_init(void) {
-	int i;
+	int ret = KERERR_SUCCESS;
 	//register devices
 	mempool_major = register_blkdev(mempool_major, VMEM_NAME);
 	if(mempool_major <= 0) {
-		printk(KERN_WARNING"mempool:%s: unable to get major number\n", VMEM_NAME);
+		printk(KERN_INFO"mempool:%s: unable to get major number\n", VMEM_NAME);
 		return -EBUSY;
 	}
 	Devices = (struct mempool_dev *)kmalloc(ndevices * sizeof(struct mempool_dev), GFP_KERNEL);
 	if(Devices == NULL) {
-		goto out_unregister;
+		goto err_kmalloc_dev;
 	}
 
-	for(i = 0; i < ndevices; i++) {
-		setup_device(Devices + i, i);
+	ret = setup_device(Devices, 0);
+	if(ret < KERERR_SUCCESS) {
+		printk(KERN_INFO"mempool: create dev fail\n");
+		goto err_setup_dev;
 	}
 	printk(KERN_NOTICE"mempool:mempool_init\n");
 	return 0;
 
-out_unregister:
+err_setup_dev:
+err_kmalloc_dev:
 	unregister_blkdev(mempool_major, VMEM_NAME);
 	return -ENOMEM;
 }
 
 static void mempool_exit(void) {
-	int i;
-	for(i = 0; i < ndevices; i++) {
-		destory_device(Devices + i, i);
-	}
+	destory_device(Devices, 0);
 	unregister_blkdev(mempool_major, VMEM_NAME);
 	kfree(Devices);
 	printk(KERN_NOTICE"mempool:mempool_exit\n");

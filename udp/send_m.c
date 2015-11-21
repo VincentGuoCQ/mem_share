@@ -26,7 +26,7 @@ char *buffer = "Tony test from kernel!\n";
 module_param(buffer, charp, 0644);
 MODULE_PARM_DESC(buffer, "Packet content");
 
-__u32 dstip = 0xc0a80164;
+__u32 dstip = 0xc0a8016b;
 module_param(dstip, uint, 0644);
 
 __s16 dstport = 8000;
@@ -125,7 +125,7 @@ static int __init udp_send_init(void)
     struct socket *sock;
     struct threadinfo *tinfo;
 
-    err = sock_create_kern(PF_INET, SOCK_DGRAM, IPPROTO_UDP, &sock);
+    err = sock_create_kern(PF_INET, SOCK_STREAM, IPPROTO_TCP, &sock);
     if (err < 0) {
         printk(KERN_ALERT "UDP create sock err, err=%d\n", err);
         goto create_error;

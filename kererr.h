@@ -1,0 +1,9 @@
+#ifndef KERERR_H
+#define KERERR_H
+
+#define KERERR_SUCCESS 0
+#define KERERR_ALLOC -1
+#define KERERR_CREATE_FILE -2
+#define KERERR_CREATE_SLAB -3
+#define KERERR_CREATE_THREAD -4
+#endif //KERERR_H
