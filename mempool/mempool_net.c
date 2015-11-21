@@ -42,12 +42,13 @@ static int handlethread(void *data)
 	msg.msg_control = NULL;
 	msg.msg_controllen = 0;
     while (!kthread_should_stop()) {
+        schedule_timeout_interruptible(1 * HZ);
 		if(!clihost->sock) {
 			continue;
 		}
         iov.iov_base = &msgctr;
         iov.iov_len = sizeof(msgctr);
-        len = kernel_recvmsg(clihost->sock, &msg, &iov, 1, 100, MSG_WAITFORONE);
+        len = kernel_recvmsg(clihost->sock, &msg, &iov, 1, 100, MSG_DONTWAIT);
         //close of client
 		if(len == 0) {
 			break;
@@ -99,6 +100,7 @@ int mempool_listen_thread(void *data)
     }
 	//accept loop
 	while(!kthread_should_stop()) {
+        schedule_timeout_interruptible(1 * HZ);
 		if(!dev->listen_sock) {
 			continue;
 		}
@@ -110,25 +112,29 @@ int mempool_listen_thread(void *data)
 		}
 		//create client host structure
 		clihost = (struct client_host *)kmem_cache_alloc(dev->slab_client_host, GFP_USER);
+		memset(clihost, 0, sizeof(struct client_host));
+		if(!clihost) {
+			printk(KERN_ALERT "mempool thread: create cli host err");
+			continue;
+		}
 		clihost->sock = cli_sock;
 		clihost->state = CLIHOST_STATE_CONNECTED;
 		kernel_getpeername(cli_sock, (struct sockaddr *)&clihost->host_addr, &sockaddrlen);
 
 		//init client host
 		mutex_init(&clihost->lshd_msgqueue_mutex);
-		INIT_LIST_HEAD(&clihost->lshd_msgqueue);
 
 		//add to list
 		mutex_lock(&dev->lshd_rent_client_mutex);
-		list_add_tail(&dev->lshd_rent_client, &clihost->ls_rent);
+		list_add_tail(&clihost->ls_rent, &dev->lshd_rent_client);
 		mutex_unlock(&dev->lshd_rent_client_mutex);
-		clihost->handlethread = kthread_run(handlethread, clihost, "mempool handle thread");
-		if (IS_ERR(clihost->handlethread)) {
-			printk(KERN_ALERT "create recvmsg thread err, err=%ld\n",
-                PTR_ERR(clihost->handlethread));
-			continue;
-		}
-        schedule_timeout_interruptible(1 * HZ);
+//		clihost->handlethread = kthread_run(handlethread, clihost, "mempool handle thread");
+//		if (IS_ERR(clihost->handlethread)) {
+//			printk(KERN_ALERT "create recvmsg thread err, err=%ld\n",
+  //              PTR_ERR(clihost->handlethread));
+//			continue;
+//		}
+        //schedule_timeout_interruptible(1 * HZ);
     }
 
     return 0;

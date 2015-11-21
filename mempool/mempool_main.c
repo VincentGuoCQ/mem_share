@@ -89,7 +89,9 @@ static void destory_device(struct mempool_dev *dev, int which) {
 			sock_release(clihost->sock);
 			clihost->sock = NULL;
 		}
-		kthread_stop(clihost->handlethread);
+		if(clihost->handlethread) {
+			kthread_stop(clihost->handlethread);
+		}
 		list_del(&clihost->ls_rent);
 		kmem_cache_free(dev->slab_client_host, clihost);
 	}
