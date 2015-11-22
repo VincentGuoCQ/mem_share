@@ -152,6 +152,8 @@ struct mempool_dev {
 //the precentage for the daemon thread to trigger memory return
 #define LOWER_LIMIT_PRECENT 0.2
 
+#define VMEM_IF_NAME "eth0"
+
 struct server_host {
 	struct list_head ls_available;
 	struct list_head ls_inuse;

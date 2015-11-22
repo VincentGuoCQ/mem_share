@@ -34,16 +34,25 @@ static ssize_t clihost_priser_show(struct device *dev, struct device_attribute *
 		return 0;
 	}
 
-	out += sprintf(out, "Server Name\t\tIP Address\t\t Block Num\n");
+	out += sprintf(out, "Server Name\t\tIP Address\t\t Block Num\t\tState\n");
 	out += sprintf(out, "----------------------------------\n");
 
 	mutex_lock(&Devices->lshd_avail_mutex);
 	list_for_each(p, &Devices->lshd_available) {
 		ps = list_entry(p, struct server_host, ls_available);
 		IP_convert(&ps->host_addr.sin_addr, IPaddr, IP_ADDR_LEN);
-		out += sprintf(out, "%s\t\t%s\t\t%d\n", ps->host_name, IPaddr, ps->block_num);
+		out += sprintf(out, "%s\t\t%s\t\t%d\t\tavailable\n",
+					ps->host_name, IPaddr, ps->block_num);
 	}
 	mutex_unlock(&Devices->lshd_avail_mutex);
+	mutex_lock(&Devices->lshd_inuse_mutex);
+	list_for_each(p, &Devices->lshd_inuse) {
+		ps = list_entry(p, struct server_host, ls_inuse);
+		IP_convert(&ps->host_addr.sin_addr, IPaddr, IP_ADDR_LEN);
+		out += sprintf(out, "%s\t\t%s\t\t%d\t\tinuse\n",
+					ps->host_name, IPaddr, ps->block_num);
+	}
+	mutex_unlock(&Devices->lshd_inuse_mutex);
 	return out - buf;
 }
 static DEVICE_ATTR_RO(clihost_priser);
@@ -153,6 +162,57 @@ err_null_ptr:
 }
 static DEVICE_ATTR_WO(clihost_op);
 
+static ssize_t clihost_memctrl_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
+	struct MsgMemCtrl * memctrl = NULL;
+
+	if(count != sizeof(struct MsgMemCtrl)) {
+		printk(KERN_NOTICE"vmem:%s:illegal input\n", __FUNCTION__);
+		return ERR_VMEM_ARG_ILLEGAL;
+	}
+	memctrl = (struct MsgMemCtrl *)kmalloc(sizeof(struct MsgMemCtrl), GFP_KERNEL);
+	memcpy(memctrl, buf, count);
+	switch(memctrl->ctrlId) {
+		//alloc page
+		case CLIHOST_MEMCTRL_ALLOC_PAGE: {
+			unsigned int nIndex = 0;
+			unsigned int nCount = 0;
+
+			for(nIndex = 0; nIndex < BLK_NUM_MAX
+						&& nCount < memctrl->info.allocpage.pagenum; nIndex++) {
+				mutex_lock(&Devices->addr_entry[nIndex].handle_mutex);
+				if(Devices->addr_entry[nIndex].mapped
+						&& Devices->addr_entry[nIndex].inuse_count < VPAGE_NUM_IN_BLK) {
+					Devices->addr_entry[nIndex].inuse_count++;
+					nCount++;
+				}
+				mutex_unlock(&Devices->addr_entry[nIndex].handle_mutex);
+			}
+
+			break;
+		}
+		//free page
+		case CLIHOST_MEMCTRL_FREE_PAGE: {
+			unsigned int nIndex = 0;
+			unsigned int nCount = 0;
+
+			for(nIndex = 0; nIndex < BLK_NUM_MAX
+						&& nCount < memctrl->info.allocpage.pagenum; nIndex++) {
+				mutex_lock(&Devices->addr_entry[nIndex].handle_mutex);
+				if(Devices->addr_entry[nIndex].mapped
+						&& Devices->addr_entry[nIndex].inuse_count > 0) {
+					Devices->addr_entry[nIndex].inuse_count--;
+					nCount++;
+				}
+				mutex_unlock(&Devices->addr_entry[nIndex].handle_mutex);
+			}
+			break;
+		}
+	}
+	kfree(memctrl);
+	return count;
+}
+static DEVICE_ATTR_WO(clihost_memctrl);
+
 int create_sysfs_file(struct device *dev) {
 	int ret = ERR_SUCCESS;
 	
@@ -176,8 +236,16 @@ int create_sysfs_file(struct device *dev) {
 		ret = ERR_VMEM_CREATE_FILE;
 		goto err_sys_create_clihost_priblk;
 	}
-	return ret;
 
+	ret = device_create_file(dev, &dev_attr_clihost_memctrl);
+	if (ret) {
+		printk(KERN_NOTICE"vmem:create sysfs file error: %d", ret);
+		ret = ERR_VMEM_CREATE_FILE;
+		goto err_sys_create_clihost_memctrl;
+	}
+	return ret;
+err_sys_create_clihost_memctrl:
+	device_remove_file(dev, &dev_attr_clihost_priblk);
 err_sys_create_clihost_priblk:
 	device_remove_file(dev, &dev_attr_clihost_op);
 err_sys_create_clihost_op:
@@ -189,4 +257,5 @@ void delete_sysfs_file(struct device *dev) {
 	device_remove_file(dev, &dev_attr_clihost_priser);
 	device_remove_file(dev, &dev_attr_clihost_op);
 	device_remove_file(dev, &dev_attr_clihost_priblk);
+	device_remove_file(dev, &dev_attr_clihost_memctrl);
 }

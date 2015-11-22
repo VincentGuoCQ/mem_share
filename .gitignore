@@ -8,3 +8,5 @@ tags
 *.ko
 *.mod.c
 *.swo
+*.swm
+*.swn

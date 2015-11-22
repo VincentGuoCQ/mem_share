@@ -10,5 +10,6 @@
 #define SYSFS_CLI_OP_PATH "clihost_op"
 #define SYSFS_CLI_PRISER_PATH "clihost_priser"
 #define SYSFS_CLI_PRIBLK_PATH "clihost_priblk"
+#define SYSFS_CLI_MEMCTRL_PATH "clihost_memctrl"
 
 #endif //VMEM_COMMON_H
