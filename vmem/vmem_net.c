@@ -3,6 +3,7 @@
 #include "../common.h"
 #include <linux/kthread.h>
 #include "../kererr.h"
+#include "../net_msg.h"
 
 extern struct vmem_dev *Devices;
 
@@ -49,34 +50,41 @@ static int connect_to_addr(struct socket *sock, struct server_host *serhost)
 }
 
 static int HandleThread(void *data) {
-//    struct kvec iov;
-//    struct threadinfo *tinfo = data;
-//    struct msghdr msg;
-//    int len;
-//	msg.msg_name = (void *)&daddr;
-//	msg.msg_namelen = sizeof(daddr);
-//	msg.msg_control = NULL;
-//	msg.msg_controllen = 0;
-//	msg.msg_flags = 0; 
-//    while (!kthread_should_stop()) {
-//        iov.iov_base = (void *)tinfo->buffer;
-//        iov.iov_len = strlen(tinfo->buffer);
-//        len = kernel_sendmsg(tinfo->sock, &msg, &iov, 1, strlen(tinfo->buffer));
-//        if (len != strlen(buffer)) {
-//            printk(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%d\n",
-//                    len, (int)strlen(buffer));
-//            if (len == -ECONNREFUSED) {
-//                printk(KERN_ALERT "Receive Port Unreachable packet!\n");
-//            }
-//            //break;
-//        }
-//        printk(KERN_ALERT "kernel_sendmsg: len=%d\n", len);
-//        schedule_timeout_interruptible(timeout * HZ);
-//    }
-//    kthreadtask = NULL;
-//    sk_release_kernel(tinfo->sock->sk);
-//    kfree(tinfo);
-//
+    struct kvec iov;
+    struct server_host *serhost = (struct server_host *)data;
+	struct msghdr msg;
+	struct netmsg_req msg_req;
+	struct netmsg_rpy msg_rpy;
+    int len;
+
+	memset(&msg_req, 0 ,sizeof(struct netmsg_req));
+	msg.msg_name = NULL;
+	msg.msg_namelen = 0;
+	msg.msg_control = NULL;
+	msg.msg_controllen = 0;
+	msg.msg_flags = 0;
+
+    while (!kthread_should_stop()) {
+        iov.iov_base = (void *)&msg_req;
+        iov.iov_len = sizeof(struct netmsg_req);
+        len = kernel_sendmsg(serhost->sock, &msg, &iov, 1, sizeof(struct netmsg_req));
+        if (len != sizeof(struct netmsg_req)) {
+            printk(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%ld\n",
+                    len, sizeof(struct netmsg_req));
+            if (len == -ECONNREFUSED) {
+                printk(KERN_ALERT "Receive Port Unreachable packet!\n");
+            }
+            //break;
+        }
+        printk(KERN_ALERT "kernel_sendmsg: len=%d\n", len);
+        schedule_timeout_interruptible(1 * HZ);
+    }
+//	serhost->HandleThread = NULL;
+//	if(serhost->sock) {
+//		sock_release(serhost->sock);
+//		serhost->sock = NULL;
+//	}
+
     return 0;
 }
 
@@ -107,19 +115,21 @@ int vmem_net_init(struct server_host *serhost) {
         printk(KERN_ALERT "sock connect server err, err=%d\n", ret);
         //goto connect_error;
 	}
-//	serhost->HandleThread = kthread_run(HandleThread, (void *)serhost, "HandleThread");
-//    if (IS_ERR(serhost->HandleThread)) {
-//        printk(KERN_ALERT "create sendmsg thread err, err=%ld\n",
-//                PTR_ERR(serhost->HandleThread));
-//        //goto thread_error;
-//    }
+	serhost->HandleThread = kthread_run(HandleThread, (void *)serhost, "HandleThread");
+    if (IS_ERR(serhost->HandleThread)) {
+        printk(KERN_ALERT "create sendmsg thread err, err=%ld\n",
+                PTR_ERR(serhost->HandleThread));
+        goto thread_error;
+    }
     return ret;
 
 thread_error:
 connect_error:
 bind_error:
-    sock_release(serhost->sock);
-	serhost->sock = NULL;
+//	if(serhost->sock) {
+//		sock_release(serhost->sock);
+//		serhost->sock = NULL;
+//	}
 create_error:
     return ret;
 }

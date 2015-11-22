@@ -170,6 +170,8 @@ struct server_host {
 	struct task_struct *HandleThread;
 	struct socket *sock;
 
+	struct mutex ptr_mutex;
+
 	struct mutex lshd_req_msg_mutex;
 	struct list_head lshd_req_msg;
 	struct mutex lshd_rpy_msg_mutex;
