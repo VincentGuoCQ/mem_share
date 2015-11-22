@@ -158,6 +158,7 @@ static void destory_device(struct vmem_dev *dev, int which) {
 	mutex_lock(&dev->lshd_inuse_mutex);
 	list_for_each_safe(p, next, &dev->lshd_inuse) {
 		pserhost = list_entry(p, struct server_host, ls_inuse);
+		mutex_lock(&pserhost->ptr_mutex);
 		if(pserhost->sock) {
 			sock_release(pserhost->sock);
 			pserhost->sock = NULL;
@@ -166,6 +167,7 @@ static void destory_device(struct vmem_dev *dev, int which) {
 			kthread_stop(pserhost->HandleThread);
 			pserhost->HandleThread = NULL;
 		}
+		mutex_unlock(&pserhost->ptr_mutex);
 		list_del(&pserhost->ls_inuse);
 		kmem_cache_free(dev->slab_server_host, pserhost);
 	}

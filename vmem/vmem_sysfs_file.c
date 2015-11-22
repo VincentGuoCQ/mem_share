@@ -42,7 +42,7 @@ static ssize_t clihost_priser_show(struct device *dev, struct device_attribute *
 		ps = list_entry(p, struct server_host, ls_available);
 		IP_convert(&ps->host_addr.sin_addr, IPaddr, IP_ADDR_LEN);
 		out += sprintf(out, "%s\t\t%s\t\t%d\t\tavailable\n",
-					ps->host_name, IPaddr, ps->block_num);
+					ps->host_name, IPaddr, ps->block_available);
 	}
 	mutex_unlock(&Devices->lshd_avail_mutex);
 	mutex_lock(&Devices->lshd_inuse_mutex);
@@ -50,7 +50,7 @@ static ssize_t clihost_priser_show(struct device *dev, struct device_attribute *
 		ps = list_entry(p, struct server_host, ls_inuse);
 		IP_convert(&ps->host_addr.sin_addr, IPaddr, IP_ADDR_LEN);
 		out += sprintf(out, "%s\t\t%s\t\t%d\t\tinuse\n",
-					ps->host_name, IPaddr, ps->block_num);
+					ps->host_name, IPaddr, ps->block_available);
 	}
 	mutex_unlock(&Devices->lshd_inuse_mutex);
 	return out - buf;
@@ -102,7 +102,7 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 			memset(serHost, 0, sizeof(struct server_host));
 			memcpy(serHost->host_name, cliop->info.addser.host_name, HOST_NAME_LEN);
 			memcpy(&serHost->host_addr.sin_addr, &cliop->info.addser.host_addr, sizeof(struct in_addr));
-			memcpy(&serHost->block_num, &cliop->info.addser.block_num, sizeof(unsigned int));
+			memcpy(&serHost->block_available, &cliop->info.addser.block_num, sizeof(unsigned int));
 			//search for existing
 			mutex_lock(&Devices->lshd_avail_mutex);
 			list_for_each(p, &Devices->lshd_available) {
@@ -118,8 +118,10 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 				mutex_lock(&Devices->lshd_avail_mutex);
 				list_add_tail(&serHost->ls_available, &Devices->lshd_available);
 				mutex_unlock(&Devices->lshd_avail_mutex);
+				mutex_init(&serHost->ptr_mutex);
 			}
 			else {
+				kmem_cache_free(Devices->slab_server_host, serHost);
 				goto err_ser_exist;
 			}
 			break;
