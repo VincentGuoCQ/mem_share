@@ -65,13 +65,6 @@ static void destory_device(struct mempool_dev *dev, int which) {
 	}
 	del_timer_sync(&dev->timer);
 	
-	//destory listen socket thread
-	kthread_stop(dev->ListenThread);
-	if(dev->listen_sock) {
-		sock_release(dev->listen_sock);
-		dev->listen_sock = NULL;
-	}
-
 	//destory block
 	for(nIndex = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL; nIndex++) {
 		if(dev->blk[nIndex].avail) {
@@ -80,30 +73,44 @@ static void destory_device(struct mempool_dev *dev, int which) {
 			dev->blk[nIndex].avail = FALSE;
 		}
 	}
+	printk(KERN_INFO"mempool:destory block\n");
 	//destroy client list
 	mutex_lock(&dev->lshd_rent_client_mutex);
 	list_for_each_safe(p, next, &dev->lshd_rent_client) {
 		clihost = list_entry(p, struct client_host, ls_rent);
-
-		if(clihost->sock) {	
-			sock_release(clihost->sock);
-			clihost->sock = NULL;
-		}
+		mutex_lock(&clihost->ptr_mutex);
+//		if(clihost->sock) {	
+//			sock_release(clihost->sock);
+//			clihost->sock = NULL;
+//		}
 		if(clihost->handlethread) {
 			kthread_stop(clihost->handlethread);
+			clihost->handlethread = NULL;
 		}
+		mutex_unlock(&clihost->ptr_mutex);
 		list_del(&clihost->ls_rent);
 		kmem_cache_free(dev->slab_client_host, clihost);
 	}
 	mutex_unlock(&dev->lshd_rent_client_mutex);
+	printk(KERN_INFO"mempool:destory client list\n");
 	//delete client slab
 	if(dev->slab_client_host) {
 		kmem_cache_destroy(dev->slab_client_host);
 	}
-
+	printk(KERN_INFO"mempool:destory client slab\n");
+	//destory listen socket thread
+	if(dev->listen_sock) {
+		sock_release(dev->listen_sock);
+		dev->listen_sock = NULL;
+	}
+	printk(KERN_INFO"mempool:destory listen thread\n");
+	if(dev->ListenThread) {
+		kthread_stop(dev->ListenThread);
+		dev->ListenThread = NULL;
+	}
 	//delete sysfs file
 	delete_sysfs_file(disk_to_dev(dev->gd));
-
+	printk(KERN_INFO"mempool:destory sys file\n");
 	//delete gendisk
 	if(dev->gd) {
 		del_gendisk(dev->gd);

@@ -114,14 +114,19 @@ struct mempool_blk {
 #define CLIHOST_STATE_CONNECTED 1
 struct client_host {
 	struct list_head ls_rent;
-	struct list_head lshd_msgqueue;
-	struct mutex lshd_msgqueue_mutex;
 	char host_name[HOST_NAME_LEN];
 	struct sockaddr_in host_addr;
 	unsigned int block_num; 
 	unsigned int state;
 	struct socket *sock;
 	struct task_struct *handlethread;
+
+	struct mutex ptr_mutex;
+
+	struct mutex lshd_req_msg_mutex;
+	struct list_head lshd_req_msg;
+	struct mutex lshd_rpy_msg_mutex;
+	struct list_head lshd_rpy_msg;
 };
 
 struct mempool_dev {
@@ -159,10 +164,16 @@ struct server_host {
 	struct list_head ls_inuse;
 	char host_name[HOST_NAME_LEN];
 	struct sockaddr_in host_addr;
-	unsigned int block_num; 
+	unsigned int block_inuse; 
+	unsigned int block_available; 
 	unsigned int state;
 	struct task_struct *HandleThread;
 	struct socket *sock;
+
+	struct mutex lshd_req_msg_mutex;
+	struct list_head lshd_req_msg;
+	struct mutex lshd_rpy_msg_mutex;
+	struct list_head lshd_rpy_msg;
 };
 
 struct vmem_blk {
