@@ -11,6 +11,8 @@ int vmem_print_server(int argc, char *argv[]);
 int vmem_print_block(int argc, char *argv[]);
 int vmem_delete_server(int argc, char *argv[]);
 int vmem_map_local(int argc, char *argv[]);
+int vmem_alloc_page(int argc, char *argv[]);
+int vmem_free_page(int argc, char *argv[]);
 
 static const struct option addser_opt [] = {
 	{"name",	required_argument,	NULL,	'n'},
@@ -19,6 +21,14 @@ static const struct option addser_opt [] = {
 	{NULL,	0,	NULL,	0}
 };
 static const struct option maplocal_opt [] = {
+	{"num",		required_argument,	NULL,	'n'},
+	{NULL,	0,	NULL,	0}
+};
+static const struct option allocpage_opt [] = {
+	{"num",		required_argument,	NULL,	'n'},
+	{NULL,	0,	NULL,	0}
+};
+static const struct option freepage_opt [] = {
 	{"num",		required_argument,	NULL,	'n'},
 	{NULL,	0,	NULL,	0}
 };
@@ -57,6 +67,18 @@ static const struct command cmds[] = {
 	{
 		.name  = "maplocal",
 		.fn	   = vmem_map_local,
+		.help  = NULL,
+		.usage = NULL,
+	},
+	{
+		.name  = "allocpage",
+		.fn	   = vmem_alloc_page,
+		.help  = NULL,
+		.usage = NULL,
+	},
+	{
+		.name  = "freepage",
+		.fn	   = vmem_free_page,
 		.help  = NULL,
 		.usage = NULL,
 	},

@@ -24,6 +24,20 @@ struct MsgCliOp {
 	} info;
 };
 
+#define CLIHOST_MEMCTRL_ALLOC_PAGE		0x1
+#define CLIHOST_MEMCTRL_FREE_PAGE		0x2
+
+struct MsgMemCtrl {
+	unsigned int ctrlId;
+	union {
+		struct {
+			unsigned int pagenum;
+		}allocpage;
+		struct {
+			unsigned int pagenum;
+		}freepage;
+	} info;
+};
 #endif
 
 #ifdef MEMPOOL

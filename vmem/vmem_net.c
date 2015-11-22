@@ -3,13 +3,16 @@
 #include "../common.h"
 #include <linux/kthread.h>
 #include "../kererr.h"
+
+extern struct vmem_dev *Devices;
+
 static int bind_to_device(struct socket *sock, char *ifname, struct server_host *serhost)
 {
     struct net *net;
     struct net_device *dev;
     __be32 addr;
 	struct sockaddr_in sin;
-	int ret = KERNEL_SUCCESS;
+	int ret = KERERR_SUCCESS;
 
     net = sock_net(sock->sk);
     dev = __dev_get_by_name(net, ifname);
@@ -36,7 +39,7 @@ static int connect_to_addr(struct socket *sock, struct server_host *serhost)
     serhost->host_addr.sin_family = AF_INET;
     //serhost->host_addr.sin_addr.s_addr = cpu_to_be32(dstip);
     serhost->host_addr.sin_port = cpu_to_be16(SERHOST_LISTEN_PORT);
-    ret = sock->ops->connect(sock, (struct sockaddr*)&daddr,
+    ret = sock->ops->connect(sock, (struct sockaddr*)&serhost->host_addr,
             sizeof(struct sockaddr), 0);
     if (ret < 0) {
         printk(KERN_ALERT "sock connect err, err=%d\n", ret);
@@ -74,10 +77,10 @@ static int HandleThread(void *data) {
 //    sk_release_kernel(tinfo->sock->sk);
 //    kfree(tinfo);
 //
-//    return 0;
+    return 0;
 }
 
-int vmem_net_init(struct vmem_blk *blk, struct server_host *serhost) {
+int vmem_net_init(struct server_host *serhost) {
     int ret = KERERR_SUCCESS;
 
     ret = sock_create_kern(PF_INET, SOCK_STREAM, IPPROTO_TCP, &(serhost->sock));
@@ -87,30 +90,36 @@ int vmem_net_init(struct vmem_blk *blk, struct server_host *serhost) {
     }
     serhost->sock->sk->sk_reuse = 1;
 
-    ret = bind_to_device(serhost->sock, ifname, serhost);
+    ret = bind_to_device(serhost->sock, VMEM_IF_NAME, serhost);
     if (ret < KERERR_SUCCESS) {
-        printk(KERN_ALERT "Bind to %s err, err=%d\n", ifname, ret);
+        printk(KERN_ALERT "Bind to %s err, err=%d\n", VMEM_IF_NAME, ret);
         goto bind_error;
     }    
-    ret = connect_to_addr(serhost->sock);
+    ret = connect_to_addr(serhost->sock, serhost);
     if (ret < KERERR_SUCCESS) {
         printk(KERN_ALERT "sock connect err, err=%d\n", ret);
         goto connect_error;
     }
-
-    serhost->HandleThread = kthread_run(HandleThread, (void *)serhost, "Tony-sendmsg");
-
-    if (IS_ERR(serhost->HandleThread)) {
-        printk(KERN_ALERT "create sendmsg thread err, err=%ld\n",
-                PTR_ERR(serhost->HandleThread));
-        goto thread_error;
-    }
+	serhost->host_addr.sin_family = AF_INET;
+	serhost->host_addr.sin_port = cpu_to_be16(SERHOST_LISTEN_PORT);
+	ret = kernel_connect(serhost->sock, (struct sockaddr *)&serhost->host_addr, sizeof(struct sockaddr), 0);
+	if(ret < KERERR_SUCCESS) {
+        printk(KERN_ALERT "sock connect server err, err=%d\n", ret);
+        //goto connect_error;
+	}
+//	serhost->HandleThread = kthread_run(HandleThread, (void *)serhost, "HandleThread");
+//    if (IS_ERR(serhost->HandleThread)) {
+//        printk(KERN_ALERT "create sendmsg thread err, err=%ld\n",
+//                PTR_ERR(serhost->HandleThread));
+//        //goto thread_error;
+//    }
     return ret;
 
 thread_error:
-bind_error:
 connect_error:
+bind_error:
     sock_release(serhost->sock);
+	serhost->sock = NULL;
 create_error:
     return ret;
 }
@@ -126,13 +135,33 @@ int vmem_daemon(void *data) {
 				sumpage += pdev->addr_entry[nIndex].inuse_count;
 			}
 		}
-		printk(KERN_INFO"sumpage=%d, sumblk=%d", sumpage, sumblk);
+		printk(KERN_INFO"sumpage=%d, sumblk=%d\n", sumpage, sumblk);
 		//memory over upper limit
-		if(sumpage >= (unsigned int)(UPPER_LIMIT_PRECENT * (sumblk * VPAGE_NUM_IN_BLK))) {
+		if(sumpage >= (unsigned int)(3 * ((sumblk * VPAGE_NUM_IN_BLK) >> 2))) {
+			struct list_head *p = NULL;
+			struct server_host *serhost = NULL; 
+			printk(KERN_INFO"over upper limit\n");
+			mutex_lock(&Devices->lshd_avail_mutex);
+			list_for_each(p, &Devices->lshd_available) {
+				serhost = list_entry(p, struct server_host, ls_available);
+				list_del(p);
+				break;
+			}
+			mutex_unlock(&Devices->lshd_avail_mutex);
+			if(NULL == serhost) {
+				continue;
+			}
+
+			vmem_net_init(serhost);
+
+			mutex_lock(&Devices->lshd_inuse_mutex);
+			list_add_tail(&serhost->ls_inuse, &Devices->lshd_inuse);
+			mutex_unlock(&Devices->lshd_inuse_mutex);
 			continue;
 		}
 		//memory below lower limit
-		if(sumpage <= (unsigned int)(LOWER_LIMIT_PRECENT * (sumblk * VPAGE_NUM_IN_BLK))) {
+		if(sumpage <= (unsigned int)(((sumblk * VPAGE_NUM_IN_BLK) >> 2))) {
+			printk(KERN_INFO"over lower limit");
 			continue;
 		}
 	}

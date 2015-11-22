@@ -190,3 +190,94 @@ err_args:
 	free(pCli);
 	return ret;
 }
+int vmem_alloc_page(int argc, char *argv[]) {
+	int opt = 0;
+	char *pagenum = NULL;
+	struct MsgMemCtrl * pmemctrl = 
+				(struct MsgMemCtrl *)malloc(sizeof(struct MsgMemCtrl));
+	int ret = ERR_SUCCESS;
+	char path[SYSFS_PATH_MAX];
+	memset(pmemctrl, 0, sizeof(struct MsgMemCtrl));
+	memset(path, 0, SYSFS_PATH_MAX);
+
+	//option parse
+	for(;;) {
+		opt = getopt_long(argc, argv, "n:", allocpage_opt, NULL);
+		if(-1 == opt) {
+			break;
+		}
+
+		switch(opt) {
+			case 'n':
+				DEBUG_INFO("page num:%s", optarg);
+				pagenum = optarg;
+				break;
+		}
+	}
+	if(NULL == pagenum) {
+		ret = ERR_CLI_ARG_ILLEGAL;
+		goto err_args;
+	}
+	
+	//copy argument to structure
+	if((pmemctrl->info.allocpage.pagenum = atoi(pagenum)) == 0) {
+		ret = ERR_CLI_ARG_ILLEGAL;
+		goto err_args;
+	}
+	pmemctrl->ctrlId = CLIHOST_MEMCTRL_ALLOC_PAGE;
+	
+	//write to file
+	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
+				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_CLI_MEMCTRL_PATH);
+	write_sysfs_attribute(path, (char *)pmemctrl, sizeof(struct MsgMemCtrl));
+
+err_args:
+	free(pmemctrl);
+	return ret;
+}
+
+int vmem_free_page(int argc, char *argv[]) {
+	int opt = 0;
+	char *pagenum = NULL;
+	struct MsgMemCtrl * pmemctrl = 
+				(struct MsgMemCtrl *)malloc(sizeof(struct MsgMemCtrl));
+	int ret = ERR_SUCCESS;
+	char path[SYSFS_PATH_MAX];
+	memset(pmemctrl, 0, sizeof(struct MsgMemCtrl));
+	memset(path, 0, SYSFS_PATH_MAX);
+
+	//option parse
+	for(;;) {
+		opt = getopt_long(argc, argv, "n:", freepage_opt, NULL);
+		if(-1 == opt) {
+			break;
+		}
+
+		switch(opt) {
+			case 'n':
+				DEBUG_INFO("page num:%s", optarg);
+				pagenum = optarg;
+				break;
+		}
+	}
+	if(NULL == pagenum) {
+		ret = ERR_CLI_ARG_ILLEGAL;
+		goto err_args;
+	}
+	
+	//copy argument to structure
+	if((pmemctrl->info.allocpage.pagenum = atoi(pagenum)) == 0) {
+		ret = ERR_CLI_ARG_ILLEGAL;
+		goto err_args;
+	}
+	pmemctrl->ctrlId = CLIHOST_MEMCTRL_FREE_PAGE;
+	
+	//write to file
+	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
+				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_CLI_MEMCTRL_PATH);
+	write_sysfs_attribute(path, (char *)pmemctrl, sizeof(struct MsgMemCtrl));
+
+err_args:
+	free(pmemctrl);
+	return ret;
+}
