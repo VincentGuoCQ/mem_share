@@ -35,8 +35,9 @@ static int handlethread(void *data)
     struct kvec iov;
     struct client_host *clihost = (struct client_host *)data;
     struct msghdr msg;
-	struct netmsg_control msgctr;
+	struct netmsg_req msg_req;
     int len;
+	memset(&msg_req, 0, sizeof(struct netmsg_req));
 	msg.msg_name = NULL;
 	msg.msg_namelen = 0;
 	msg.msg_control = NULL;
@@ -46,24 +47,37 @@ static int handlethread(void *data)
 		if(!clihost->sock) {
 			continue;
 		}
-        iov.iov_base = &msgctr;
-        iov.iov_len = sizeof(msgctr);
-        len = kernel_recvmsg(clihost->sock, &msg, &iov, 1, 100, MSG_DONTWAIT);
+        iov.iov_base = (void *)&msg_req;
+        iov.iov_len = sizeof(struct netmsg_req);
+        len = kernel_recvmsg(clihost->sock, &msg, &iov, 1, sizeof(struct netmsg_req), MSG_DONTWAIT);
         //close of client
 		if(len == 0) {
 			break;
 		}
-		if (len < 0) {
-            printk(KERN_ALERT "mempool handlethread: kernel_recvmsg err, len=%d, buffer=%ld\n",
-                    len, sizeof(msgctr));
+		if (len < 0 || len != sizeof(struct netmsg_req)) {
+            printk(KERN_ALERT"mempool handlethread: kernel_recvmsg err, len=%d, buffer=%ld\n",
+                    len, sizeof(struct netmsg_req));
             if (len == -ECONNREFUSED) {
-                printk(KERN_ALERT "mempool handlethread: Receive Port Unreachable packet!\n");
+                printk(KERN_ALERT"mempool handlethread: Receive Port Unreachable packet!\n");
             }
 			continue;
         }
+		switch(msg_req.msgID) {
+			case NETMSG_CLI_REQUEST_ALLOC_BLK: {
+                printk(KERN_INFO"mempool handlethread: Receive alloc blk request\n");
+				break;
+			}
+		}
     }
-    sock_release(clihost->sock);
-	clihost->sock = NULL;
+	mutex_lock(&clihost->ptr_mutex);
+	if(clihost->sock) {
+		sock_release(clihost->sock);
+		clihost->sock = NULL;
+	}
+	mutex_unlock(&clihost->ptr_mutex);
+	while(!kthread_should_stop()) {
+		schedule_timeout_interruptible(1 * HZ);
+	}
     return 0;
 }
 
@@ -122,21 +136,27 @@ int mempool_listen_thread(void *data)
 		kernel_getpeername(cli_sock, (struct sockaddr *)&clihost->host_addr, &sockaddrlen);
 
 		//init client host
-		mutex_init(&clihost->lshd_msgqueue_mutex);
+		mutex_init(&clihost->lshd_rpy_msg_mutex);
+		mutex_init(&clihost->lshd_req_msg_mutex);
+		mutex_init(&clihost->ptr_mutex);
+		INIT_LIST_HEAD(&clihost->lshd_req_msg);
+		INIT_LIST_HEAD(&clihost->lshd_rpy_msg);
 
 		//add to list
 		mutex_lock(&dev->lshd_rent_client_mutex);
 		list_add_tail(&clihost->ls_rent, &dev->lshd_rent_client);
 		mutex_unlock(&dev->lshd_rent_client_mutex);
-//		clihost->handlethread = kthread_run(handlethread, clihost, "mempool handle thread");
-//		if (IS_ERR(clihost->handlethread)) {
-//			printk(KERN_ALERT "create recvmsg thread err, err=%ld\n",
-  //              PTR_ERR(clihost->handlethread));
-//			continue;
-//		}
-        //schedule_timeout_interruptible(1 * HZ);
+		clihost->handlethread = kthread_run(handlethread, clihost, "mempool handle thread");
+		if (IS_ERR(clihost->handlethread)) {
+			printk(KERN_ALERT "create recvmsg thread err, err=%ld\n",
+                PTR_ERR(clihost->handlethread));
+			continue;
+		}
+        schedule_timeout_interruptible(1 * HZ);
     }
-
+	while(!kthread_should_stop()) {
+        schedule_timeout_interruptible(1 * HZ);
+	}
     return 0;
 
 listen_error:
@@ -144,6 +164,9 @@ bind_error:
 	if(dev->listen_sock) {
 		sock_release(dev->listen_sock);
 		dev->listen_sock = NULL;
+	}
+	while(!kthread_should_stop()) {
+        schedule_timeout_interruptible(1 * HZ);
 	}
 create_error:
 null_ptr_error:
