@@ -174,7 +174,8 @@ struct server_host {
 	unsigned int block_inuse; 
 	unsigned int block_available; 
 	unsigned int state;
-	struct task_struct *HandleThread;
+	struct task_struct *SerRecvThread;
+	struct task_struct *SerSendThread;
 	struct socket *sock;
 
 	struct mutex ptr_mutex;
@@ -183,6 +184,9 @@ struct server_host {
 	struct list_head lshd_req_msg;
 	struct mutex lshd_rpy_msg_mutex;
 	struct list_head lshd_rpy_msg;
+
+	struct kmem_cache *slab_netmsg_req;
+	struct kmem_cache *slab_netmsg_rpy;
 };
 
 struct vmem_blk {
@@ -228,6 +232,8 @@ struct vmem_dev {
 	struct kmem_cache * slab_server_host;
 	struct cli_blk * addr_entry;
 	struct task_struct *DaemonThread;
+	struct kmem_cache *slab_netmsg_req;
+	struct kmem_cache *slab_netmsg_rpy;
 };
 
 int vmem_daemon(void *);
