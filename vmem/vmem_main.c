@@ -2,7 +2,7 @@
 
 #include "../common.h"
 #include "userspace/errors.h"
-
+#include "../net_msg.h"
 struct vmem_dev *Devices = NULL;
 struct cli_blk blktable[BLK_NUM_MAX];
 
@@ -163,9 +163,9 @@ static void destory_device(struct vmem_dev *dev, int which) {
 			sock_release(pserhost->sock);
 			pserhost->sock = NULL;
 		}
-		if(pserhost->HandleThread) {
-			kthread_stop(pserhost->HandleThread);
-			pserhost->HandleThread = NULL;
+		if(pserhost->SerSendThread) {
+			kthread_stop(pserhost->SerSendThread);
+			pserhost->SerSendThread = NULL;
 		}
 		mutex_unlock(&pserhost->ptr_mutex);
 		list_del(&pserhost->ls_inuse);
@@ -175,6 +175,12 @@ static void destory_device(struct vmem_dev *dev, int which) {
 	//delete slab
 	if(dev->slab_server_host) {
 		kmem_cache_destroy(dev->slab_server_host);
+	}
+	if(dev->slab_netmsg_req) {
+		kmem_cache_destroy(dev->slab_netmsg_req);
+	}
+	if(dev->slab_netmsg_rpy) {
+		kmem_cache_destroy(dev->slab_netmsg_rpy);
 	}
 	//delete sysfs file
 	delete_sysfs_file(disk_to_dev(dev->gd));
@@ -266,10 +272,23 @@ static void setup_device(struct vmem_dev *dev, int which) {
 	}
 
 	//create slab for server host
-	dev->slab_server_host = kmem_cache_create("vmem_serhost", sizeof(struct server_host), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
+	dev->slab_server_host = kmem_cache_create("vmem_serhost",
+				sizeof(struct server_host), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
 	if(NULL == dev->slab_server_host) {
 		printk(KERN_NOTICE"vmem:create vmem_serhost slab fail\n");
 		goto err_serhost_slab;
+	}
+	dev->slab_netmsg_req = kmem_cache_create("vmem_netmsg_req",
+				sizeof(struct netmsg_req), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
+	if(NULL == dev->slab_netmsg_req) {
+		printk(KERN_NOTICE"vmem:create vmem_serhost slab fail\n");
+		goto err_netmsg_req_slab;
+	}
+	dev->slab_netmsg_rpy = kmem_cache_create("vmem_netmsg_rpy",
+				sizeof(struct netmsg_rpy), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
+	if(NULL == dev->slab_netmsg_rpy) {
+		printk(KERN_NOTICE"vmem:create vmem_serhost slab fail\n");
+		goto err_netmsg_rpy_slab;
 	}
 	//init mutex
 	mutex_init(&dev->lshd_avail_mutex);
@@ -288,6 +307,11 @@ static void setup_device(struct vmem_dev *dev, int which) {
 	wake_up_process(dev->DaemonThread);
 	return;
 
+	kmem_cache_destroy(dev->slab_netmsg_rpy);
+err_netmsg_rpy_slab:
+	kmem_cache_destroy(dev->slab_netmsg_req);
+err_netmsg_req_slab:
+	kmem_cache_destroy(dev->slab_server_host);
 err_serhost_slab:
 err_sysfs_create:
 err_alloc:

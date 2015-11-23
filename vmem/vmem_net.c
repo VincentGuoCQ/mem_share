@@ -49,12 +49,13 @@ static int connect_to_addr(struct socket *sock, struct server_host *serhost)
     return ret;
 }
 
-static int HandleThread(void *data) {
+static int SerSendThread(void *data) {
     struct kvec iov;
     struct server_host *serhost = (struct server_host *)data;
 	struct msghdr msg;
+	struct list_head * ls_req = NULL, *next = NULL;
 	struct netmsg_req msg_req;
-	struct netmsg_rpy msg_rpy;
+	struct netmsg_rpy *msg_rpy;
     int len;
 
 	memset(&msg_req, 0 ,sizeof(struct netmsg_req));
@@ -115,10 +116,11 @@ int vmem_net_init(struct server_host *serhost) {
         printk(KERN_ALERT "sock connect server err, err=%d\n", ret);
         //goto connect_error;
 	}
-	serhost->HandleThread = kthread_run(HandleThread, (void *)serhost, "HandleThread");
-    if (IS_ERR(serhost->HandleThread)) {
+	//create ser send thread
+	serhost->SerSendThread = kthread_run(SerSendThread, (void *)serhost, "Server Send thread");
+    if (IS_ERR(serhost->SerSendThread)) {
         printk(KERN_ALERT "create sendmsg thread err, err=%ld\n",
-                PTR_ERR(serhost->HandleThread));
+                PTR_ERR(serhost->SerSendThread));
         goto thread_error;
     }
     return ret;
