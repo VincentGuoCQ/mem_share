@@ -58,7 +58,6 @@ struct netmsg_rpy {
 		struct {
 			unsigned int blkIndex;
 			unsigned int offset;
-			char buf[VPAGE_SIZE];
 		} rpy_read;
 	} info;
 };

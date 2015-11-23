@@ -119,7 +119,8 @@ struct client_host {
 	unsigned int block_num; 
 	unsigned int state;
 	struct socket *sock;
-	struct task_struct *handlethread;
+	struct task_struct *CliRecvThread;
+	struct task_struct *CliSendThread;
 
 	struct mutex ptr_mutex;
 
@@ -127,6 +128,9 @@ struct client_host {
 	struct list_head lshd_req_msg;
 	struct mutex lshd_rpy_msg_mutex;
 	struct list_head lshd_rpy_msg;
+
+	struct kmem_cache * slab_netmsg_req;
+	struct kmem_cache * slab_netmsg_rpy;
 };
 
 struct mempool_dev {
@@ -144,6 +148,9 @@ struct mempool_dev {
 
 	struct socket * listen_sock;
 	struct task_struct *ListenThread;
+
+	struct kmem_cache * slab_netmsg_req;
+	struct kmem_cache * slab_netmsg_rpy;
 };
 
 #endif

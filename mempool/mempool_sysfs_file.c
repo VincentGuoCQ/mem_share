@@ -26,7 +26,7 @@ void IP_convert(struct in_addr *ip, unsigned char *str, unsigned int buflen) {
 static ssize_t clihost_state_show(struct device *dev, struct device_attribute *attr, char *buf) {
 	char *out = buf;
 	struct list_head *p = NULL;
-	struct client_host *ps = NULL;
+	struct client_host *clihost = NULL;
 	char IPaddr[IP_ADDR_LEN];
 
 	if(!Devices) {
@@ -38,9 +38,9 @@ static ssize_t clihost_state_show(struct device *dev, struct device_attribute *a
 	
 	mutex_lock(&Devices->lshd_rent_client_mutex);
 	list_for_each(p, &Devices->lshd_rent_client) {
-		ps = list_entry(p, struct client_host, ls_rent);
-		IP_convert(&ps->host_addr.sin_addr, IPaddr, IP_ADDR_LEN);
-		out += sprintf(out, "%s\t\t%s\t\t%d\n", ps->host_name, IPaddr, ps->block_num);
+		clihost = list_entry(p, struct client_host, ls_rent);
+		IP_convert(&clihost->host_addr.sin_addr, IPaddr, IP_ADDR_LEN);
+		out += sprintf(out, "%s\t\t%s\t\t%d\n", clihost->host_name, IPaddr, clihost->block_num);
 	}
 	mutex_unlock(&Devices->lshd_rent_client_mutex);
 	return out - buf;

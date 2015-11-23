@@ -4,8 +4,7 @@
 #include "../kererr.h"
 #include "../net_msg.h"
 
-static int bind_to_device(struct socket *sock, char *ifname)
-{
+static int bind_to_device(struct socket *sock, char *ifname) {
     struct net *net;
     struct net_device *dev;
     __be32 addr;
@@ -30,26 +29,30 @@ static int bind_to_device(struct socket *sock, char *ifname)
     return 0;
 }
 
-static int handlethread(void *data)
-{
+static int CliRecvThread(void *data) {
     struct kvec iov;
     struct client_host *clihost = (struct client_host *)data;
     struct msghdr msg;
-	struct netmsg_req msg_req;
-    int len;
-	memset(&msg_req, 0, sizeof(struct netmsg_req));
+	struct netmsg_req *msg_req = NULL;
+    int len 0;
+
 	msg.msg_name = NULL;
 	msg.msg_namelen = 0;
 	msg.msg_control = NULL;
 	msg.msg_controllen = 0;
+
+	msg_req = (struct netmsg_req *)kmem_cache_alloc(clihost->slab_netmsg_req, GFP_USER);
+	memset(msg_req, 0, sizeof(struct netmsg_req));
+
     while (!kthread_should_stop()) {
         schedule_timeout_interruptible(1 * HZ);
 		if(!clihost->sock) {
 			continue;
 		}
-        iov.iov_base = (void *)&msg_req;
+        iov.iov_base = (void *)msg_req;
         iov.iov_len = sizeof(struct netmsg_req);
-        len = kernel_recvmsg(clihost->sock, &msg, &iov, 1, sizeof(struct netmsg_req), MSG_DONTWAIT);
+        len = kernel_recvmsg(clihost->sock, &msg, &iov, 1, 
+					sizeof(struct netmsg_req), MSG_DONTWAIT);
         //close of client
 		if(len == 0) {
 			break;
@@ -62,13 +65,20 @@ static int handlethread(void *data)
             }
 			continue;
         }
-		switch(msg_req.msgID) {
-			case NETMSG_CLI_REQUEST_ALLOC_BLK: {
-                printk(KERN_INFO"mempool handlethread: Receive alloc blk request\n");
-				break;
-			}
-		}
+		mutex_lock(&clihost->lshd_req_msg_mutex);
+		list_add_tail(&msg_req->ls_reqmsg, &clihost->lshd_req_msg);
+		mutex_unlock(&clihost->lshd_req_msg_mutex);
+
+		msg_req = (struct netmsg_req *)kmem_cache_alloc(clihost->slab_netmsg_req, GFP_USER);
+		memset(msg_req, 0, sizeof(struct netmsg_req));
+//		switch(msg_req.msgID) {
+//			case NETMSG_CLI_REQUEST_ALLOC_BLK: {
+//              printk(KERN_INFO"mempool handlethread: Receive alloc blk request\n");
+//				break;
+//			}
+//		}
     }
+	kmem_cache_free(clihost->slab_netmsg_req, msg_req);
 	mutex_lock(&clihost->ptr_mutex);
 	if(clihost->sock) {
 		sock_release(clihost->sock);
@@ -79,6 +89,47 @@ static int handlethread(void *data)
 		schedule_timeout_interruptible(1 * HZ);
 	}
     return 0;
+}
+
+static int CliSendThread(void *data) {
+    struct kvec iov;
+    struct client_host *clihost = (struct client_host *)data;
+    struct msghdr msg;
+	struct list_head * ls_req = NULL, *next = NULL;
+	struct netmsg_req *msg_req;
+	struct netmsg_rpy *msg_rpy;
+    int len;
+
+	msg.msg_name = NULL;
+	msg.msg_namelen = 0;
+	msg.msg_control = NULL;
+	msg.msg_controllen = 0;
+    while (!kthread_should_stop()) {
+        schedule_timeout_interruptible(1 * HZ);
+		if(!clihost->sock) {
+			continue;
+		}
+		if(list_empty(&clihost->lshd_req_msg)) {
+			continue;
+		}
+		mutex_lock(&clihost->lshd_req_msg_mutex);
+		list_for_each_safe(ls_req, next, &clihost->lshd_req_msg) {
+			msg_req = list_entry(ls_req, struct netmsg_req, ls_reqmsg);
+			switch(msg_req->msgID) {
+				case NETMSG_CLI_REQUEST_ALLOC_BLK:{
+					printk(KERN_INFO"request alloc block from client\n");
+					break;
+				}
+			}
+			list_del(ls_req);
+		}
+		mutex_unlock(&clihost->lshd_req_msg_mutex);
+	}
+
+	while(!kthread_should_stop()) {
+		schedule_timeout_interruptible(1 * HZ);
+	}
+	return 0;
 }
 
 int mempool_listen_thread(void *data)
@@ -135,21 +186,31 @@ int mempool_listen_thread(void *data)
 		clihost->state = CLIHOST_STATE_CONNECTED;
 		kernel_getpeername(cli_sock, (struct sockaddr *)&clihost->host_addr, &sockaddrlen);
 
-		//init client host
+		//init client host, slab, list_head
 		mutex_init(&clihost->lshd_rpy_msg_mutex);
 		mutex_init(&clihost->lshd_req_msg_mutex);
 		mutex_init(&clihost->ptr_mutex);
 		INIT_LIST_HEAD(&clihost->lshd_req_msg);
 		INIT_LIST_HEAD(&clihost->lshd_rpy_msg);
+		clihost->slab_netmsg_req = dev->slab_netmsg_req;
+		clihost->slab_netmsg_rpy = dev->slab_netmsg_rpy; 
 
 		//add to list
 		mutex_lock(&dev->lshd_rent_client_mutex);
 		list_add_tail(&clihost->ls_rent, &dev->lshd_rent_client);
 		mutex_unlock(&dev->lshd_rent_client_mutex);
-		clihost->handlethread = kthread_run(handlethread, clihost, "mempool handle thread");
-		if (IS_ERR(clihost->handlethread)) {
+		//create recive thread for client
+		clihost->CliRecvThread = kthread_run(CliRecvThread, clihost, "Client Recive thread");
+		if (IS_ERR(clihost->CliRecvThread)) {
 			printk(KERN_ALERT "create recvmsg thread err, err=%ld\n",
-                PTR_ERR(clihost->handlethread));
+                PTR_ERR(clihost->CliRecvThread));
+			continue;
+		}
+		//create send thread for client
+		clihost->CliSendThread = kthread_run(CliSendThread, clihost, "Client Send thread");
+		if (IS_ERR(clihost->CliSendThread)) {
+			printk(KERN_ALERT "create recvmsg thread err, err=%ld\n",
+			PTR_ERR(clihost->CliSendThread));
 			continue;
 		}
         schedule_timeout_interruptible(1 * HZ);
