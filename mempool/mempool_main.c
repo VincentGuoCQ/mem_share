@@ -3,6 +3,7 @@
 #include "../common.h"
 #include "../kererr.h"
 #include "userspace/errors.h"
+#include "../net_msg.h"
 
 struct mempool_dev *Devices = NULL;
 
@@ -83,9 +84,13 @@ static void destory_device(struct mempool_dev *dev, int which) {
 //			sock_release(clihost->sock);
 //			clihost->sock = NULL;
 //		}
-		if(clihost->handlethread) {
-			kthread_stop(clihost->handlethread);
-			clihost->handlethread = NULL;
+		if(clihost->CliRecvThread) {
+			kthread_stop(clihost->CliRecvThread);
+			clihost->CliRecvThread = NULL;
+		}
+		if(clihost->CliSendThread) {
+			kthread_stop(clihost->CliSendThread);
+			clihost->CliSendThread = NULL;
 		}
 		mutex_unlock(&clihost->ptr_mutex);
 		list_del(&clihost->ls_rent);
@@ -93,9 +98,16 @@ static void destory_device(struct mempool_dev *dev, int which) {
 	}
 	mutex_unlock(&dev->lshd_rent_client_mutex);
 	printk(KERN_INFO"mempool:destory client list\n");
-	//delete client slab
+
+	//delete client, netmsg slab
 	if(dev->slab_client_host) {
 		kmem_cache_destroy(dev->slab_client_host);
+	}
+	if(dev->slab_netmsg_req) {
+		kmem_cache_destroy(dev->slab_netmsg_req);
+	}
+	if(dev->slab_netmsg_rpy) {
+		kmem_cache_destroy(dev->slab_netmsg_rpy);
 	}
 	printk(KERN_INFO"mempool:destory client slab\n");
 	//destory listen socket thread
@@ -183,11 +195,26 @@ static int setup_device(struct mempool_dev *dev, int which) {
 	}
 
 	//create slab for client host
-	dev->slab_client_host = kmem_cache_create("mempool_clihost", sizeof(struct client_host), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
+	dev->slab_client_host = kmem_cache_create("mempool_clihost",
+				sizeof(struct client_host), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
 	if(NULL == dev->slab_client_host) {
 		printk(KERN_NOTICE"mempool:create mempool_clihost slab fail\n");
 		ret = KERERR_CREATE_SLAB;
 		goto err_clihost_slab;
+	}
+	dev->slab_netmsg_req = kmem_cache_create("mempool_netmsg_req",
+				sizeof(struct netmsg_req), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
+	if(NULL == dev->slab_netmsg_req) {
+		printk(KERN_NOTICE"mempool:create mempool_clihost slab fail\n");
+		ret = KERERR_CREATE_SLAB;
+		goto err_netmsg_req_slab;
+	}
+	dev->slab_netmsg_rpy = kmem_cache_create("mempool_netmsg_rpy",
+				sizeof(struct netmsg_rpy), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
+	if(NULL == dev->slab_netmsg_rpy) {
+		printk(KERN_NOTICE"mempool:create mempool_clihost slab fail\n");
+		ret = KERERR_CREATE_SLAB;
+		goto err_netmsg_rpy_slab;
 	}
 	//init mutex
 	mutex_init(&dev->lshd_rent_client_mutex);
@@ -211,6 +238,11 @@ static int setup_device(struct mempool_dev *dev, int which) {
 
 	return ret;
 err_create_thread:
+	kmem_cache_destroy(dev->slab_netmsg_rpy);
+err_netmsg_rpy_slab:
+	kmem_cache_destroy(dev->slab_netmsg_req);
+err_netmsg_req_slab:
+	kmem_cache_destroy(dev->slab_client_host);
 err_clihost_slab:
 err_sysfs_create:
 err_alloc:
