@@ -195,7 +195,6 @@ struct vmem_blk {
 	bool inuse:1;
 	unsigned long blk_start_pos;
 	unsigned long blk_size;
-	struct task_struct *HandleThread;
 };
 
 #define ADDR_SPACE_LEN  BLK_NUM_MAX_SHIFT+BLK_SIZE_SHIFT
