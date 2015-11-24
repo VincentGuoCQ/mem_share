@@ -80,10 +80,11 @@ static void destory_device(struct mempool_dev *dev, int which) {
 	list_for_each_safe(p, next, &dev->lshd_rent_client) {
 		clihost = list_entry(p, struct client_host, ls_rent);
 		mutex_lock(&clihost->ptr_mutex);
-//		if(clihost->sock) {	
-//			sock_release(clihost->sock);
-//			clihost->sock = NULL;
-//		}
+		if(clihost->sock) {
+			sock_release(clihost->sock);
+			clihost->sock = NULL;
+		}
+		mutex_unlock(&clihost->ptr_mutex);
 		if(clihost->CliRecvThread) {
 			kthread_stop(clihost->CliRecvThread);
 			clihost->CliRecvThread = NULL;
@@ -92,7 +93,6 @@ static void destory_device(struct mempool_dev *dev, int which) {
 			kthread_stop(clihost->CliSendThread);
 			clihost->CliSendThread = NULL;
 		}
-		mutex_unlock(&clihost->ptr_mutex);
 		list_del(&clihost->ls_rent);
 		kmem_cache_free(dev->slab_client_host, clihost);
 	}

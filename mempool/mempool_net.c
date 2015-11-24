@@ -34,7 +34,7 @@ static int CliRecvThread(void *data) {
     struct client_host *clihost = (struct client_host *)data;
     struct msghdr msg;
 	struct netmsg_req *msg_req = NULL;
-    int len 0;
+    int len = 0;
 
 	msg.msg_name = NULL;
 	msg.msg_namelen = 0;
@@ -108,6 +108,7 @@ static int CliSendThread(void *data) {
         schedule_timeout_interruptible(1 * HZ);
 		if(!clihost->sock) {
 			continue;
+		mutex_unlock(&clihost->ptr_mutex);
 		}
 		if(list_empty(&clihost->lshd_req_msg)) {
 			continue;
@@ -207,12 +208,13 @@ int mempool_listen_thread(void *data)
 			continue;
 		}
 		//create send thread for client
-		clihost->CliSendThread = kthread_run(CliSendThread, clihost, "Client Send thread");
-		if (IS_ERR(clihost->CliSendThread)) {
-			printk(KERN_ALERT "create recvmsg thread err, err=%ld\n",
-			PTR_ERR(clihost->CliSendThread));
-			continue;
-		}
+		clihost->CliSendThread = NULL;
+//		clihost->CliSendThread = kthread_run(CliSendThread, clihost, "Client Send thread");
+//		if (IS_ERR(clihost->CliSendThread)) {
+//			printk(KERN_ALERT "create recvmsg thread err, err=%ld\n",
+//			PTR_ERR(clihost->CliSendThread));
+//			continue;
+	//		}
         schedule_timeout_interruptible(1 * HZ);
     }
 	while(!kthread_should_stop()) {
