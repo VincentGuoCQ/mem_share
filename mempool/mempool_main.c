@@ -78,21 +78,34 @@ static void destory_device(struct mempool_dev *dev, int which) {
 	//destroy client list
 	mutex_lock(&dev->lshd_rent_client_mutex);
 	list_for_each_safe(p, next, &dev->lshd_rent_client) {
+		struct list_head *sp = NULL, *snext = NULL;
+		struct netmsg_req *netmsg_req = NULL;
 		clihost = list_entry(p, struct client_host, ls_rent);
 		mutex_lock(&clihost->ptr_mutex);
 		if(clihost->sock) {
 			sock_release(clihost->sock);
-			clihost->sock = NULL;
+			//clihost->sock = NULL;
 		}
 		mutex_unlock(&clihost->ptr_mutex);
+		printk(KERN_INFO"mempool:destory clienthost sock\n");
 		if(clihost->CliRecvThread) {
 			kthread_stop(clihost->CliRecvThread);
 			clihost->CliRecvThread = NULL;
 		}
+		printk(KERN_INFO"mempool:destory clienthost recv thread\n");
 		if(clihost->CliSendThread) {
 			kthread_stop(clihost->CliSendThread);
 			clihost->CliSendThread = NULL;
 		}
+		printk(KERN_INFO"mempool:destory clienthost send thread\n");
+		mutex_lock(&clihost->lshd_req_msg_mutex);
+		list_for_each_safe(sp, snext, &clihost->lshd_req_msg) {
+			netmsg_req = list_entry(sp, struct netmsg_req, ls_reqmsg);
+			list_del(&netmsg_req->ls_reqmsg);
+			kmem_cache_free(clihost->slab_netmsg_req, netmsg_req);
+		}
+		mutex_unlock(&clihost->lshd_req_msg_mutex);
+		printk(KERN_INFO"mempool:destory clienthost req msg\n");
 		list_del(&clihost->ls_rent);
 		kmem_cache_free(dev->slab_client_host, clihost);
 	}
@@ -218,6 +231,7 @@ static int setup_device(struct mempool_dev *dev, int which) {
 	}
 	//init mutex
 	mutex_init(&dev->lshd_rent_client_mutex);
+	mutex_init(&dev->blk_mutex);
 
 	//init blk
 	for(nIndex = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL; nIndex++) {

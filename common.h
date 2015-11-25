@@ -143,6 +143,7 @@ struct mempool_dev {
 	struct mutex lshd_rent_client_mutex;
 
 	struct mempool_blk blk[MAX_BLK_NUM_IN_MEMPOOL];
+	struct mutex blk_mutex;
 
 	struct kmem_cache * slab_client_host;
 
