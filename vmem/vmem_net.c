@@ -7,8 +7,7 @@
 
 extern struct vmem_dev *Devices;
 
-static int bind_to_device(struct socket *sock, char *ifname, struct server_host *serhost)
-{
+static int bind_to_device(struct socket *sock, char *ifname, struct server_host *serhost) {
     struct net *net;
     struct net_device *dev;
     __be32 addr;
@@ -34,8 +33,7 @@ static int bind_to_device(struct socket *sock, char *ifname, struct server_host 
     return 0;
 }
 
-static int connect_to_addr(struct socket *sock, struct server_host *serhost)
-{
+static int connect_to_addr(struct socket *sock, struct server_host *serhost) {
     int ret = KERERR_SUCCESS;
     serhost->host_addr.sin_family = AF_INET;
     //serhost->host_addr.sin_addr.s_addr = cpu_to_be32(dstip);
@@ -55,7 +53,6 @@ static int SerSendThread(void *data) {
 	struct msghdr msg;
 	struct list_head *p = NULL, *next = NULL;
 	struct netmsg_req *msg_req = NULL;
-	struct netmsg_rpy *msg_rpy;
     int len;
 
 	memset(&msg_req, 0 ,sizeof(struct netmsg_req));
@@ -117,7 +114,7 @@ int vmem_net_init(struct server_host *serhost) {
 
     ret = sock_create_kern(PF_INET, SOCK_STREAM, IPPROTO_TCP, &(serhost->sock));
     if (ret < KERERR_SUCCESS) {
-        printk(KERN_ALERT "UDP create sock err, err=%d\n", ret);
+        printk(KERN_ALERT "TCP create sock err, err=%d\n", ret);
 		ret = KERERR_CREATE_SOCKET;
         goto create_error;
     }
@@ -152,7 +149,7 @@ int vmem_net_init(struct server_host *serhost) {
 		ret = KERERR_CREATE_THREAD;
         goto thread_error;
     }
-    return ret;
+    return KERERR_SUCCESS;
 
 thread_error:
 connect_error:
@@ -198,12 +195,15 @@ int vmem_daemon(void *data) {
 			//find one
 			if(serhost) {
 				struct netmsg_req * msg_req = NULL;
+				printk(KERN_INFO"find a inuse server\n");
+				//find a available existing server
 				msg_req = (struct netmsg_req *)kmem_cache_alloc(serhost->slab_netmsg_req, GFP_USER);
 				memset((void *)msg_req, 0, sizeof(struct netmsg_req));
 				msg_req->msgID = NETMSG_CLI_REQUEST_ALLOC_BLK;
 				msg_req->info.req_alloc_blk.blknum = 1;
 				mutex_lock(&serhost->lshd_req_msg_mutex);
 				list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
+				printk(KERN_INFO"add msg in inuse server\n");
 				mutex_unlock(&serhost->lshd_req_msg_mutex);
 				continue;
 			}
@@ -229,6 +229,7 @@ int vmem_daemon(void *data) {
 				mutex_lock(&Devices->lshd_inuse_mutex);
 				list_add_tail(&serhost->ls_inuse, &Devices->lshd_inuse);
 				mutex_unlock(&Devices->lshd_inuse_mutex);
+				printk(KERN_INFO"add server to inuse list\n");
 			}
 			//if tcp to server not established, delete server
 			else {

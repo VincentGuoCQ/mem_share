@@ -125,8 +125,6 @@ static void vmem_make_request(struct request_queue *q, struct bio *bio) {
 	return;
 }
 static void destory_device(struct vmem_dev *dev, int which) {
-	struct list_head *p = NULL, *next = NULL;
-	struct server_host *pserhost = NULL;
 	int nIndex = 0;
 	
 	if(!dev) {
@@ -149,42 +147,44 @@ static void destory_device(struct vmem_dev *dev, int which) {
 	}
 	printk(KERN_INFO"vmem:destory native block\n");
 	//destory server host avail list
-	mutex_lock(&dev->lshd_avail_mutex);
-	list_for_each_safe(p, next, &dev->lshd_available) {
-		pserhost = list_entry(p, struct server_host, ls_available);
-		list_del(&pserhost->ls_available);
-		kmem_cache_free(dev->slab_server_host, pserhost);
-	}
-	mutex_unlock(&dev->lshd_avail_mutex);
-	printk(KERN_INFO"vmem:destory serverhost avail list\n");
+//	mutex_lock(&dev->lshd_avail_mutex);
+//	list_for_each_safe(p, next, &dev->lshd_available) {
+//		pserhost = list_entry(p, struct server_host, ls_available);
+//		list_del(&pserhost->ls_available);
+//		kmem_cache_free(dev->slab_server_host, pserhost);
+//	}
+//	mutex_unlock(&dev->lshd_avail_mutex);
+//	printk(KERN_INFO"vmem:destory serverhost avail list\n");
 	//destory server host inuse list 
-	mutex_lock(&dev->lshd_inuse_mutex);
-	list_for_each_safe(p, next, &dev->lshd_inuse) {
-		struct list_head *sp = NULL, *snext = NULL;
-		struct netmsg_req *netmsg_req = NULL;
-		pserhost = list_entry(p, struct server_host, ls_inuse);
-		mutex_lock(&pserhost->ptr_mutex);
-		if(pserhost->sock) {
-			sock_release(pserhost->sock);
-			pserhost->sock = NULL;
-		}
-		mutex_unlock(&pserhost->ptr_mutex);
-		printk(KERN_INFO"vmem:destory serverhost inuse sock\n");
-		if(pserhost->SerSendThread) {
-			kthread_stop(pserhost->SerSendThread);
-			pserhost->SerSendThread = NULL;
-		}
-		printk(KERN_INFO"vmem:destory serverhost inuse send thread\n");
-		list_for_each_safe(sp, snext, &pserhost->lshd_req_msg) {
-			netmsg_req = list_entry(sp, struct netmsg_req, ls_reqmsg);
-			list_del(&netmsg_req->ls_reqmsg);
-			kmem_cache_free(pserhost->slab_netmsg_req, netmsg_req);
-		}
-		list_del(&pserhost->ls_inuse);
-		kmem_cache_free(dev->slab_server_host, pserhost);
-	}
-	mutex_unlock(&dev->lshd_inuse_mutex);
-	printk(KERN_INFO"vmem:destory serverhost inuse list\n");
+//	mutex_lock(&dev->lshd_inuse_mutex);
+//	list_for_each_safe(p, next, &dev->lshd_inuse) {
+//		struct list_head *sp = NULL, *snext = NULL;
+//		struct netmsg_req *netmsg_req = NULL;
+//		pserhost = list_entry(p, struct server_host, ls_inuse);
+//		mutex_lock(&pserhost->ptr_mutex);
+//		if(pserhost->sock) {
+//			sock_release(pserhost->sock);
+//			pserhost->sock = NULL;
+//		}
+//		mutex_unlock(&pserhost->ptr_mutex);
+//		printk(KERN_INFO"vmem:destory serverhost inuse sock\n");
+//		if(pserhost->SerSendThread) {
+//			kthread_stop(pserhost->SerSendThread);
+//			pserhost->SerSendThread = NULL;
+//		}
+//		printk(KERN_INFO"vmem:destory serverhost inuse send thread\n");
+//		mutex_lock(&pserhost->lshd_req_msg_mutex);
+//		list_for_each_safe(sp, snext, &pserhost->lshd_req_msg) {
+//			netmsg_req = list_entry(sp, struct netmsg_req, ls_reqmsg);
+//			list_del(&netmsg_req->ls_reqmsg);
+//			kmem_cache_free(pserhost->slab_netmsg_req, netmsg_req);
+//		}
+//		mutex_unlock(&pserhost->lshd_req_msg_mutex);
+//		list_del(&pserhost->ls_inuse);
+//		kmem_cache_free(dev->slab_server_host, pserhost);
+//	}
+//	mutex_unlock(&dev->lshd_inuse_mutex);
+//	printk(KERN_INFO"vmem:destory serverhost inuse list\n");
 	//delete slab
 	if(dev->slab_server_host) {
 		kmem_cache_destroy(dev->slab_server_host);
@@ -359,10 +359,7 @@ out_unregister:
 }
 
 static void vmem_exit(void) {
-	int i;
-	for(i = 0; i < ndevices; i++) {
-		destory_device(Devices + i, i);
-	}
+	destory_device(Devices, 0);
 	unregister_blkdev(vmem_major, VMEM_NAME);
 	kfree(Devices);
 	printk(KERN_NOTICE"vmem:vmem_exit\n");

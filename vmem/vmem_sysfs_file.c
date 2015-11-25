@@ -3,6 +3,7 @@
 #include "../common.h"
 #include "userspace/errors.h"
 #include "userspace/msgfmt.h"
+#include "../net_msg.h"
 
 extern struct vmem_dev *Devices;
 
@@ -81,9 +82,8 @@ static DEVICE_ATTR_RO(clihost_priblk);
 static ssize_t clihost_op_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
 	struct MsgCliOp * cliop = NULL;
 	struct server_host *serhost = NULL;
+	struct list_head *p = NULL, *next = NULL;
 	char IPaddr[IP_ADDR_LEN];
-	struct list_head *p = NULL;
-	struct server_host *ps = NULL;
 
 	if(count != sizeof(struct MsgCliOp)) {
 		printk(KERN_NOTICE"vmem:%s:illegal input\n", __FUNCTION__);
@@ -95,7 +95,7 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 	switch(cliop->op) {
 		//add server
 		case CLIHOST_OP_ADD_SERHOST: {
-			printk(KERN_NOTICE"server add\n");
+			printk(KERN_NOTICE"vmem:server add\n");
 			printk(KERN_NOTICE"name:%s,addr:%s", cliop->info.addser.host_name, IPaddr);
 			//allocate memory and copy to memory
 			serhost = (struct server_host *)kmem_cache_alloc(Devices->slab_server_host, GFP_KERNEL);
@@ -106,8 +106,8 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 			//search for existing
 			mutex_lock(&Devices->lshd_avail_mutex);
 			list_for_each(p, &Devices->lshd_available) {
-				ps = list_entry(p, struct server_host, ls_available);
-				if(!memcmp(&ps->host_addr, &serhost->host_addr, sizeof(struct in_addr))) {
+				serhost = list_entry(p, struct server_host, ls_available);
+				if(!memcmp(&serhost->host_addr, &serhost->host_addr, sizeof(struct in_addr))) {
 					break;
 				}
 			}
@@ -136,9 +136,9 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 		//map local memory
 		case CLIHOST_OP_MAP_LOCAL:{
 			int nCount = 0, nBlk = 0, nIndex = 0;
-			printk(KERN_NOTICE"map local\n");
+			printk(KERN_NOTICE"vmem:map local\n");
 			nBlk = cliop->info.maplocal.block_num;
-			printk(KERN_NOTICE"map local num:%d\n", nBlk);
+			printk(KERN_NOTICE"vmem:map local num:%d\n", nBlk);
 			if(!Devices->addr_entry) {
 				goto err_null_ptr;
 			}
@@ -156,6 +156,53 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 					nCount++;
 				} 
 			}
+			break;
+		}
+		case CLIHOST_OP_DEL_SERHOST_AVAIL: {
+			mutex_lock(&Devices->lshd_avail_mutex);
+			list_for_each_safe(p, next, &Devices->lshd_available) {
+				serhost = list_entry(p, struct server_host, ls_available);
+				list_del(&serhost->ls_available);
+				kmem_cache_free(Devices->slab_server_host, serhost);
+			}
+			mutex_unlock(&Devices->lshd_avail_mutex);
+			printk(KERN_INFO"vmem:delete serverhost avail list\n");
+			break;
+		}
+		case CLIHOST_OP_DEL_SERHOST_INUSE: {
+			mutex_lock(&Devices->lshd_inuse_mutex);
+			list_for_each_safe(p, next, &Devices->lshd_inuse) {
+				struct list_head *sp = NULL, *snext = NULL;
+				struct netmsg_req *netmsg_req = NULL;
+				serhost = list_entry(p, struct server_host, ls_inuse);
+
+				mutex_lock(&serhost->lshd_req_msg_mutex);
+				list_for_each_safe(sp, snext, &serhost->lshd_req_msg) {
+					netmsg_req = list_entry(sp, struct netmsg_req, ls_reqmsg);
+					list_del(&netmsg_req->ls_reqmsg);
+					kmem_cache_free(serhost->slab_netmsg_req, netmsg_req);
+				}
+				mutex_unlock(&serhost->lshd_req_msg_mutex);
+				printk(KERN_INFO"vmem:delete serverhost netmsg req\n");
+
+				mutex_lock(&serhost->ptr_mutex);
+				if(serhost->sock) {
+					sock_release(serhost->sock);
+					serhost->sock = NULL;
+				}
+				mutex_unlock(&serhost->ptr_mutex);
+				printk(KERN_INFO"vmem:delete serverhost inuse sock\n");
+				if(serhost->SerSendThread) {
+					kthread_stop(serhost->SerSendThread);
+					serhost->SerSendThread = NULL;
+				}
+				printk(KERN_INFO"vmem:delete serverhost inuse send thread\n");
+
+				list_del(&serhost->ls_inuse);
+				kmem_cache_free(Devices->slab_server_host, serhost);
+			}
+			mutex_unlock(&Devices->lshd_inuse_mutex);
+			printk(KERN_INFO"vmem:delete serverhost inuse list\n");
 			break;
 		}
 	}
