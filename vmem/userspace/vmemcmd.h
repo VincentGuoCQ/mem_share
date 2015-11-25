@@ -32,6 +32,11 @@ static const struct option freepage_opt [] = {
 	{"num",		required_argument,	NULL,	'n'},
 	{NULL,	0,	NULL,	0}
 };
+static const struct option delser_opt [] = {
+	{"inuse",	no_argument,	NULL,	'i'},
+	{"avail",	no_argument,	NULL,	'a'},
+	{NULL,	0,	NULL,	0}
+};
 struct command {
 	const char *name;
 	int (*fn)(int argc, char *argv[]);

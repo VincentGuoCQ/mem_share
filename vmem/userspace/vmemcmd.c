@@ -144,7 +144,38 @@ int vmem_print_block(int argc, char *argv[]) {
 }
 
 int vmem_delete_server(int argc, char *argv[]) {
+	int opt = 0;
+	struct MsgCliOp * pCli= (struct MsgCliOp *)malloc(sizeof(struct MsgCliOp));
+	int ret = ERR_SUCCESS;
+	char path[SYSFS_PATH_MAX];
+	memset(pCli, 0, sizeof(struct MsgCliOp));
+	memset(path, 0, SYSFS_PATH_MAX);
 
+	for(;;) {
+		opt = getopt_long(argc, argv, "ia", delser_opt, NULL);
+		if(-1 == opt) {
+			break;
+		}
+
+		switch(opt) {
+			case 'i': {
+				DEBUG_INFO("delete inuse server");
+				pCli->op = CLIHOST_OP_DEL_SERHOST_INUSE;  
+				break;
+			}
+			case 'a': {
+				DEBUG_INFO("delete available server");
+				pCli->op = CLIHOST_OP_DEL_SERHOST_AVAIL;  
+				break;
+			}
+		}
+	}
+
+	//write to file
+	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
+				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_CLI_OP_PATH);
+	write_sysfs_attribute(path, (char *)pCli, sizeof(struct MsgCliOp));
+	return ret;
 }
 int vmem_map_local(int argc, char *argv[]) {
 	int opt = 0;
