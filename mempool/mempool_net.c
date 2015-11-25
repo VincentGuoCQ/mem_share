@@ -4,6 +4,7 @@
 #include "../kererr.h"
 #include "../net_msg.h"
 
+extern struct mempool_dev *Devices;
 static int bind_to_device(struct socket *sock, char *ifname) {
     struct net *net;
     struct net_device *dev;
@@ -34,7 +35,7 @@ static int CliRecvThread(void *data) {
     struct client_host *clihost = (struct client_host *)data;
     struct msghdr msg;
 	struct netmsg_req *msg_req = NULL;
-    int len 0;
+    int len = 0;
 
 	msg.msg_name = NULL;
 	msg.msg_namelen = 0;
@@ -46,20 +47,24 @@ static int CliRecvThread(void *data) {
 
     while (!kthread_should_stop()) {
         schedule_timeout_interruptible(1 * HZ);
+		mutex_lock(&clihost->ptr_mutex);
 		if(!clihost->sock) {
+			mutex_unlock(&clihost->ptr_mutex);
 			continue;
 		}
+		mutex_unlock(&clihost->ptr_mutex);
         iov.iov_base = (void *)msg_req;
         iov.iov_len = sizeof(struct netmsg_req);
-        len = kernel_recvmsg(clihost->sock, &msg, &iov, 1, 
+
+		len = kernel_recvmsg(clihost->sock, &msg, &iov, 1, 
 					sizeof(struct netmsg_req), MSG_DONTWAIT);
         //close of client
 		if(len == 0) {
 			break;
 		}
 		if (len < 0 || len != sizeof(struct netmsg_req)) {
-            printk(KERN_ALERT"mempool handlethread: kernel_recvmsg err, len=%d, buffer=%ld\n",
-                    len, sizeof(struct netmsg_req));
+            //printk(KERN_ALERT"mempool handlethread: kernel_recvmsg err, len=%d, buffer=%ld\n",
+            //        len, sizeof(struct netmsg_req));
             if (len == -ECONNREFUSED) {
                 printk(KERN_ALERT"mempool handlethread: Receive Port Unreachable packet!\n");
             }
@@ -67,18 +72,14 @@ static int CliRecvThread(void *data) {
         }
 		mutex_lock(&clihost->lshd_req_msg_mutex);
 		list_add_tail(&msg_req->ls_reqmsg, &clihost->lshd_req_msg);
+        printk(KERN_ALERT"mempool RecvThread: add netmsg to list!\n");
 		mutex_unlock(&clihost->lshd_req_msg_mutex);
-
 		msg_req = (struct netmsg_req *)kmem_cache_alloc(clihost->slab_netmsg_req, GFP_USER);
-		memset(msg_req, 0, sizeof(struct netmsg_req));
-//		switch(msg_req.msgID) {
-//			case NETMSG_CLI_REQUEST_ALLOC_BLK: {
-//              printk(KERN_INFO"mempool handlethread: Receive alloc blk request\n");
-//				break;
-//			}
-//		}
+
     }
+
 	kmem_cache_free(clihost->slab_netmsg_req, msg_req);
+
 	mutex_lock(&clihost->ptr_mutex);
 	if(clihost->sock) {
 		sock_release(clihost->sock);
@@ -96,10 +97,12 @@ static int CliSendThread(void *data) {
     struct client_host *clihost = (struct client_host *)data;
     struct msghdr msg;
 	struct list_head * ls_req = NULL, *next = NULL;
-	struct netmsg_req *msg_req;
-	struct netmsg_rpy *msg_rpy;
-    int len;
-
+	struct netmsg_req *msg_req = NULL;
+	struct netmsg_rpy *msg_rpy = (struct netmsg_rpy *)kmalloc(sizeof(struct netmsg_rpy), GFP_USER);
+    int len = 0;
+	if(!Devices) {
+		goto err_device_ptr;
+	}
 	msg.msg_name = NULL;
 	msg.msg_namelen = 0;
 	msg.msg_control = NULL;
@@ -109,23 +112,63 @@ static int CliSendThread(void *data) {
 		if(!clihost->sock) {
 			continue;
 		}
+		mutex_lock(&clihost->lshd_req_msg_mutex);
 		if(list_empty(&clihost->lshd_req_msg)) {
+			mutex_unlock(&clihost->lshd_req_msg_mutex);
 			continue;
 		}
-		mutex_lock(&clihost->lshd_req_msg_mutex);
 		list_for_each_safe(ls_req, next, &clihost->lshd_req_msg) {
+			schedule_timeout_interruptible(1 * HZ);
 			msg_req = list_entry(ls_req, struct netmsg_req, ls_reqmsg);
+
+			memset(msg_rpy, 0, sizeof(struct netmsg_rpy));
 			switch(msg_req->msgID) {
-				case NETMSG_CLI_REQUEST_ALLOC_BLK:{
-					printk(KERN_INFO"request alloc block from client\n");
-					break;
-				}
+				case NETMSG_CLI_REQUEST_ALLOC_BLK: {
+					unsigned int nIndex = 0, count = 0;
+
+					msg_rpy->msgID = NETMSG_SER_REPLY_BLK;
+
+					mutex_lock(&Devices->blk_mutex); 
+					for(nIndex = 0, count = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL && count < BLK_MAX_PER_REQ && 
+								count < msg_req->info.req_alloc_blk.blknum; nIndex++) {
+						if(Devices->blk[nIndex].avail && !Devices->blk[nIndex].inuse) {
+							msg_rpy->info.rpyblk.blkinfo[count].remoteIndex = nIndex;
+							msg_rpy->info.rpyblk.blkinfo[count].remoteaddr = (unsigned long)Devices->blk[nIndex].blk_addr; 
+							Devices->blk[nIndex].inuse = TRUE;
+							count++;
+						}
+					}
+					msg_rpy->info.rpyblk.blk_alloc = count;
+					msg_rpy->info.rpyblk.blk_rest_available = 0;
+					mutex_unlock(&Devices->blk_mutex);
+
+					printk(KERN_INFO"mempool CliRecvThread: Receive alloc blk request\n");
+			
+					iov.iov_base = (void *)msg_rpy;
+					iov.iov_len = sizeof(struct netmsg_rpy);
+					if(clihost->sock)
+					  len = kernel_sendmsg(clihost->sock, &msg, &iov, 1, sizeof(struct netmsg_rpy));
+					if(len != sizeof(struct netmsg_rpy)) {
+						printk(KERN_INFO"kernel_sendmsg err, len=%d, buffer=%ld\n",
+									len, sizeof(struct netmsg_rpy));
+						if(len == -ECONNREFUSED) {
+							printk(KERN_INFO"Receive Port Unreachable packet!\n");
+						}
+						continue;
+					}
+				break;
+				}	
 			}
-			list_del(ls_req);
+
+			list_del(&msg_req->ls_reqmsg);
+			printk(KERN_INFO"mempool CliRecvThread: delete from list\n");
+			kmem_cache_free(clihost->slab_netmsg_req, msg_req);
+			printk(KERN_INFO"mempool CliRecvThread: free from slab\n");
 		}
 		mutex_unlock(&clihost->lshd_req_msg_mutex);
 	}
-
+err_device_ptr:
+	kfree(msg_rpy);
 	while(!kthread_should_stop()) {
 		schedule_timeout_interruptible(1 * HZ);
 	}
@@ -172,7 +215,7 @@ int mempool_listen_thread(void *data)
 		clihost = NULL;
 		ret = kernel_accept(dev->listen_sock, &cli_sock, O_NONBLOCK);
 		if (ret < 0) {
-			printk(KERN_ALERT "mempool thread: sock listen err, err=%d\n", ret);
+		//	printk(KERN_ALERT "mempool thread: sock accept err, err=%d\n", ret);
 			continue;
 		}
 		//create client host structure
@@ -207,6 +250,7 @@ int mempool_listen_thread(void *data)
 			continue;
 		}
 		//create send thread for client
+//		clihost->CliSendThread = NULL;
 		clihost->CliSendThread = kthread_run(CliSendThread, clihost, "Client Send thread");
 		if (IS_ERR(clihost->CliSendThread)) {
 			printk(KERN_ALERT "create recvmsg thread err, err=%ld\n",
