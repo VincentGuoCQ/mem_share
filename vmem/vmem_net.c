@@ -47,6 +47,58 @@ static int connect_to_addr(struct socket *sock, struct server_host *serhost) {
     return ret;
 }
 
+static int SerRecvThread(void *data) {
+    struct kvec iov;
+    struct server_host *serhost = (struct server_host *)data;
+	struct msghdr msg;
+	struct netmsg_rpy *msg_rpy = (struct netmsg_rpy *)kmalloc(sizeof(struct netmsg_rpy), GFP_USER);
+	int len = 0;
+	if(!Devices) {
+		goto err_device_ptr;
+	}
+	msg.msg_name = NULL;
+	msg.msg_namelen = 0;
+	msg.msg_control = NULL;
+	msg.msg_controllen = 0;
+	while(!kthread_should_stop()) {
+		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
+		mutex_lock(&serhost->ptr_mutex);
+		if(!serhost->sock) {
+			mutex_unlock(&serhost->ptr_mutex);
+			break;
+		}
+		mutex_unlock(&serhost->ptr_mutex);
+		memset(msg_rpy, 0, sizeof(struct netmsg_rpy));
+		iov.iov_base = (void *)msg_rpy;
+		iov.iov_len = sizeof(struct netmsg_rpy);
+
+		len = kernel_recvmsg(serhost->sock, &msg, &iov, 1,
+					sizeof(struct netmsg_rpy), MSG_DONTWAIT);
+		//close of client
+		if(len == 0) {
+			break;
+		}
+		if(len < 0 || len != sizeof(struct netmsg_rpy)) {
+			if(len == -ECONNREFUSED) {
+				printk(KERN_INFO"vmem thread: recvice err");
+			}
+			continue;
+		}
+		printk(KERN_INFO"vmem thread: recvice netmsg_rpy:%d", msg_rpy->msgID);
+		switch(msg_rpy->msgID) {
+			case NETMSG_SER_REPLY_BLK:{
+				printk(KERN_INFO"vmem thread: recvice rpy: blk");
+				break;
+			}
+		}
+	}
+err_device_ptr:
+	kfree(msg_rpy);
+	while(!kthread_should_stop()) {
+		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
+	}
+	return 0;
+}
 static int SerSendThread(void *data) {
     struct kvec iov;
     struct server_host *serhost = (struct server_host *)data;
@@ -63,7 +115,7 @@ static int SerSendThread(void *data) {
 	msg.msg_flags = 0;
 
     while (!kthread_should_stop()) {
-        schedule_timeout_interruptible(1 * HZ);
+        schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 		mutex_lock(&serhost->ptr_mutex);
 		if(!serhost->sock) {
 			mutex_unlock(&serhost->ptr_mutex);
@@ -103,7 +155,7 @@ static int SerSendThread(void *data) {
 //		serhost->sock = NULL;
 //	}
 	while(!kthread_should_stop()) {
-		schedule_timeout_interruptible(1 * HZ);
+		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 	}
 
     return 0;
@@ -146,6 +198,14 @@ int vmem_net_init(struct server_host *serhost) {
     if (IS_ERR(serhost->SerSendThread)) {
         printk(KERN_ALERT "create sendmsg thread err, err=%ld\n",
                 PTR_ERR(serhost->SerSendThread));
+		ret = KERERR_CREATE_THREAD;
+        goto thread_error;
+    }
+	//create server recv thread
+	serhost->SerRecvThread = kthread_run(SerRecvThread, (void *)serhost, "Server Recv thread");
+    if (IS_ERR(serhost->SerRecvThread)) {
+        printk(KERN_ALERT "create recvmsg thread err, err=%ld\n",
+                PTR_ERR(serhost->SerRecvThread));
 		ret = KERERR_CREATE_THREAD;
         goto thread_error;
     }
@@ -244,7 +304,7 @@ int vmem_daemon(void *data) {
 		}
 	}
 	while(!kthread_should_stop()) {
-		schedule_timeout_interruptible(1 * HZ);
+		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 	}
 	return 0;
 }
