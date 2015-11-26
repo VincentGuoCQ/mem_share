@@ -124,55 +124,55 @@ static int CliSendThread(void *data) {
 		list_for_each_safe(ls_req, next, &clihost->lshd_req_msg) {
 			schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 			msg_req = list_entry(ls_req, struct netmsg_req, ls_reqmsg);
-
-			memset(msg_rpy, 0, sizeof(struct netmsg_rpy));
-			switch(msg_req->msgID) {
-				case NETMSG_CLI_REQUEST_ALLOC_BLK: {
-					unsigned int nIndex = 0, count = 0;
-
-					msg_rpy->msgID = NETMSG_SER_REPLY_BLK;
-
-					mutex_lock(&Devices->blk_mutex); 
-					for(nIndex = 0, count = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL && count < BLK_MAX_PER_REQ && 
-								count < msg_req->info.req_alloc_blk.blknum; nIndex++) {
-						if(Devices->blk[nIndex].avail && !Devices->blk[nIndex].inuse) {
-							msg_rpy->info.rpyblk.blkinfo[count].remoteIndex = nIndex;
-							msg_rpy->info.rpyblk.blkinfo[count].remoteaddr = (unsigned long)Devices->blk[nIndex].blk_addr; 
-							Devices->blk[nIndex].inuse = TRUE;
-							count++;
-						}
-					}
-					msg_rpy->info.rpyblk.blk_alloc = count;
-					msg_rpy->info.rpyblk.blk_rest_available = 0;
-					mutex_unlock(&Devices->blk_mutex);
-
-					printk(KERN_INFO"mempool thread: Receive alloc blk request\n");
-			
-				break;
-				}
-			}
-
-			iov.iov_base = (void *)msg_rpy;
-			iov.iov_len = sizeof(struct netmsg_rpy);
-
-			len = kernel_sendmsg(clihost->sock, &msg, &iov, 1, sizeof(struct netmsg_rpy));
-
-			if(len != sizeof(struct netmsg_rpy)) {
-				printk(KERN_INFO"kernel_sendmsg err, len=%d, buffer=%ld\n",
-							len, sizeof(struct netmsg_rpy));
-				if(len == -ECONNREFUSED) {
-					printk(KERN_INFO"Receive Port Unreachable packet!\n");
-				}
-				//continue;
-			}
-
 			list_del(&msg_req->ls_reqmsg);
 			printk(KERN_INFO"mempool CliRecvThread: delete from list\n");
-			kmem_cache_free(clihost->slab_netmsg_req, msg_req);
-			printk(KERN_INFO"mempool CliRecvThread: free from slab\n");
 			break;
 		}
 		mutex_unlock(&clihost->lshd_req_msg_mutex);
+
+		memset(msg_rpy, 0, sizeof(struct netmsg_rpy));
+		switch(msg_req->msgID) {
+			case NETMSG_CLI_REQUEST_ALLOC_BLK: {
+				unsigned int nIndex = 0, count = 0;
+
+				msg_rpy->msgID = NETMSG_SER_REPLY_BLK;
+
+				mutex_lock(&Devices->blk_mutex);
+				for(nIndex = 0, count = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL && count < BLK_MAX_PER_REQ &&
+							count < msg_req->info.req_alloc_blk.blknum; nIndex++) {
+					if(Devices->blk[nIndex].avail && !Devices->blk[nIndex].inuse) {
+						msg_rpy->info.rpyblk.blkinfo[count].remoteIndex = nIndex;
+						msg_rpy->info.rpyblk.blkinfo[count].remoteaddr = (unsigned long)Devices->blk[nIndex].blk_addr;
+						Devices->blk[nIndex].inuse = TRUE;
+						count++;
+					}
+				}
+				msg_rpy->info.rpyblk.blk_alloc = count;
+				msg_rpy->info.rpyblk.blk_rest_available = 0;
+				mutex_unlock(&Devices->blk_mutex);
+
+				printk(KERN_INFO"mempool thread: Receive alloc blk request\n");
+		
+			break;
+			}
+		}
+
+		iov.iov_base = (void *)msg_rpy;
+		iov.iov_len = sizeof(struct netmsg_rpy);
+
+		len = kernel_sendmsg(clihost->sock, &msg, &iov, 1, sizeof(struct netmsg_rpy));
+
+		if(len != sizeof(struct netmsg_rpy)) {
+			printk(KERN_INFO"kernel_sendmsg err, len=%d, buffer=%ld\n",
+						len, sizeof(struct netmsg_rpy));
+			if(len == -ECONNREFUSED) {
+				printk(KERN_INFO"Receive Port Unreachable packet!\n");
+			}
+			//continue;
+		}
+
+		kmem_cache_free(clihost->slab_netmsg_req, msg_req);
+		printk(KERN_INFO"mempool CliRecvThread: free from slab\n");
 	}
 err_device_ptr:
 	kfree(msg_rpy);
