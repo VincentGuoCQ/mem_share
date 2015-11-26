@@ -62,6 +62,8 @@
 
 #define SERHOST_LISTEN_PORT	8000
 
+#define SCHEDULE_TIME	0.5
+
 #ifdef VMEM
 static int vmem_major = 0;
 static int vmem_minor= 1;
@@ -112,6 +114,8 @@ struct mempool_blk {
 };
 
 #define CLIHOST_STATE_CONNECTED 1
+#define CLIHOST_STATE_CLOSED 2
+
 struct client_host {
 	struct list_head ls_rent;
 	char host_name[HOST_NAME_LEN];
@@ -132,6 +136,9 @@ struct client_host {
 	struct kmem_cache * slab_netmsg_req;
 	struct kmem_cache * slab_netmsg_rpy;
 };
+
+#define MEMPOOL_STATE_LISTEN 1
+#define MEMPOOL_STATE_CLOSED 2
 
 struct mempool_dev {
 	struct request_queue *queue;
