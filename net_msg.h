@@ -32,8 +32,8 @@ struct netmsg_req {
 	} info;
 };
 
-#define NETMSG_SER_REPLY_BLK		0x1
-#define NETMSG_SER_REPLY_ERR		0x2
+#define NETMSG_SER_REPLY_ALLOC_BLK		0x1
+#define NETMSG_SER_REPLY_ERR			0x2
 
 struct netmsg_rpy {
 	struct list_head ls_rpymsg;

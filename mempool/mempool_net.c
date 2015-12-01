@@ -132,10 +132,11 @@ static int CliSendThread(void *data) {
 
 		memset(msg_rpy, 0, sizeof(struct netmsg_rpy));
 		switch(msg_req->msgID) {
+			//alloc block
 			case NETMSG_CLI_REQUEST_ALLOC_BLK: {
 				unsigned int nIndex = 0, count = 0;
 
-				msg_rpy->msgID = NETMSG_SER_REPLY_BLK;
+				msg_rpy->msgID = NETMSG_SER_REPLY_ALLOC_BLK;
 
 				mutex_lock(&Devices->blk_mutex);
 				for(nIndex = 0, count = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL && count < BLK_MAX_PER_REQ &&

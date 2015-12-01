@@ -201,7 +201,8 @@ struct vmem_blk {
 	struct server_host *serhost;
 	bool:1;
 	bool inuse:1;
-	unsigned long blk_start_pos;
+	unsigned int blk_remote_index;
+	unsigned long blk_remote_addr;
 	unsigned long blk_size;
 };
 
@@ -210,17 +211,18 @@ struct vmem_blk {
 struct cli_blk {
 	struct mutex handle_mutex;
 	union {
-		struct vmem_blk * vmem;
+		struct vmem_blk vmem;
 		struct native_blk {
 			void *addr;
 			struct page *pages;
 		}native;
 	} entry;
 	bool:1;
-	bool mapped:1;
+	bool remote:1;
+	bool inuse:1;
 	bool native:1;
 	bool page_bitmap[VPAGE_NUM_IN_BLK];
-	unsigned int inuse_count;
+	unsigned int inuse_page;
 };
 
 struct vmem_dev {
