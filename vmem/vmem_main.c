@@ -140,10 +140,10 @@ static void destory_device(struct vmem_dev *dev, int which) {
 	printk(KERN_INFO"vmem:destory daemon thread\n");
 	//destroy native block
 	for(nIndex = 0; nIndex < BLK_NUM_MAX; nIndex++) {
-		if(dev->addr_entry[nIndex].mapped && dev->addr_entry[nIndex].native) {
+		if(dev->addr_entry[nIndex].inuse && dev->addr_entry[nIndex].native) {
 			kunmap(dev->addr_entry[nIndex].entry.native.pages);
 			__free_pages(dev->addr_entry[nIndex].entry.native.pages, BLK_SIZE_SHIFT-PAGE_SHIFT);
-			dev->addr_entry[nIndex].mapped = FALSE;
+			dev->addr_entry[nIndex].inuse = FALSE;
 			dev->addr_entry[nIndex].native = FALSE;
 		}
 	}
@@ -325,7 +325,7 @@ static void setup_device(struct vmem_dev *dev, int which) {
 	memset(blktable, 0, sizeof(blktable));
 	for(nIndex = 0; nIndex < BLK_NUM_MAX; nIndex++) {
 		mutex_init(&blktable[nIndex].handle_mutex);
-		blktable[nIndex].inuse_count = 0;
+		blktable[nIndex].inuse_page = 0;
 	}
 	dev->addr_entry = blktable;
 	//init daemon thread

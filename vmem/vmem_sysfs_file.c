@@ -10,11 +10,13 @@ extern struct vmem_dev *Devices;
 char * blk_state_str[] = {
 	"null",
 	"native",
-	"mapped",
+	"remote",
 	NULL,
 };
 unsigned int state_to_str(struct cli_blk * blk) {
-	if(blk->mapped)
+	if(!blk->inuse)
+	  return 0;
+	if(blk->remote)
 	  return 2;
 	if(blk->native)
 	  return 1;
@@ -71,7 +73,13 @@ static ssize_t clihost_priblk_show(struct device *dev, struct device_attribute *
 	for(nIndex = 0; nIndex < BLK_NUM_MAX; nIndex++) {
 		mutex_lock(&Devices->addr_entry[nIndex].handle_mutex);
 		out += sprintf(out, "%d\t\t%s\t", nIndex, blk_state_str[state_to_str(&Devices->addr_entry[nIndex])]);
-		out += sprintf(out, "%lx\n", (unsigned long)Devices->addr_entry[nIndex].entry.native.addr);
+		if(Devices->addr_entry[nIndex].native) {
+			out += sprintf(out, "%lx\n", (unsigned long)Devices->addr_entry[nIndex].entry.native.addr);
+		}
+		else {
+			out += sprintf(out, "%lx\n",
+						(unsigned long)Devices->addr_entry[nIndex].entry.vmem.blk_remote_addr);
+		}
 		mutex_unlock(&Devices->addr_entry[nIndex].handle_mutex);
 	}
 	return out - buf;
@@ -144,20 +152,21 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 			}
 			for(nIndex = 0; nIndex < BLK_NUM_MAX && 
 						nCount < cliop->info.maplocal.block_num; nIndex++) {
-				if(FALSE == (Devices->addr_entry[nIndex].mapped)) {
+				if(FALSE == (Devices->addr_entry[nIndex].inuse)) {
 					mutex_lock(&Devices->addr_entry[nIndex].handle_mutex);
 					Devices->addr_entry[nIndex].entry.native.pages =
 						alloc_pages(GFP_USER, BLK_SIZE_SHIFT-PAGE_SHIFT);
 					Devices->addr_entry[nIndex].entry.native.addr 
 						= kmap(Devices->addr_entry[nIndex].entry.native.pages);
-					Devices->addr_entry[nIndex].mapped = TRUE;
 					Devices->addr_entry[nIndex].native = TRUE;
+					Devices->addr_entry[nIndex].inuse = TRUE;
 					mutex_unlock(&Devices->addr_entry[nIndex].handle_mutex);
 					nCount++;
 				} 
 			}
 			break;
 		}
+		//delete server host available
 		case CLIHOST_OP_DEL_SERHOST_AVAIL: {
 			mutex_lock(&Devices->lshd_avail_mutex);
 			list_for_each_safe(p, next, &Devices->lshd_available) {
@@ -169,6 +178,7 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 			printk(KERN_INFO"vmem:delete serverhost avail list\n");
 			break;
 		}
+		//delete server host inuse
 		case CLIHOST_OP_DEL_SERHOST_INUSE: {
 			mutex_lock(&Devices->lshd_inuse_mutex);
 			list_for_each_safe(p, next, &Devices->lshd_inuse) {
@@ -236,9 +246,9 @@ static ssize_t clihost_memctrl_store(struct device *dev, struct device_attribute
 			for(nIndex = 0; nIndex < BLK_NUM_MAX
 						&& nCount < memctrl->info.allocpage.pagenum; nIndex++) {
 				mutex_lock(&Devices->addr_entry[nIndex].handle_mutex);
-				if(Devices->addr_entry[nIndex].mapped
-						&& Devices->addr_entry[nIndex].inuse_count < VPAGE_NUM_IN_BLK) {
-					Devices->addr_entry[nIndex].inuse_count++;
+				if(Devices->addr_entry[nIndex].inuse
+						&& Devices->addr_entry[nIndex].inuse_page < VPAGE_NUM_IN_BLK) {
+					Devices->addr_entry[nIndex].inuse_page++;
 					nCount++;
 				}
 				mutex_unlock(&Devices->addr_entry[nIndex].handle_mutex);
@@ -254,9 +264,9 @@ static ssize_t clihost_memctrl_store(struct device *dev, struct device_attribute
 			for(nIndex = 0; nIndex < BLK_NUM_MAX
 						&& nCount < memctrl->info.allocpage.pagenum; nIndex++) {
 				mutex_lock(&Devices->addr_entry[nIndex].handle_mutex);
-				if(Devices->addr_entry[nIndex].mapped
-						&& Devices->addr_entry[nIndex].inuse_count > 0) {
-					Devices->addr_entry[nIndex].inuse_count--;
+				if(Devices->addr_entry[nIndex].inuse
+						&& Devices->addr_entry[nIndex].inuse_page > 0) {
+					Devices->addr_entry[nIndex].inuse_page--;
 					nCount++;
 				}
 				mutex_unlock(&Devices->addr_entry[nIndex].handle_mutex);

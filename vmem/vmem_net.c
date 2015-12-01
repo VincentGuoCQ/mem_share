@@ -86,8 +86,27 @@ static int SerRecvThread(void *data) {
 		}
 		printk(KERN_INFO"vmem thread: recvice netmsg_rpy:%d", msg_rpy->msgID);
 		switch(msg_rpy->msgID) {
-			case NETMSG_SER_REPLY_BLK:{
+			//alloc block
+			case NETMSG_SER_REPLY_ALLOC_BLK:{
+				unsigned int  nIndex = 0, count = 0;
 				printk(KERN_INFO"vmem thread: recvice rpy: blk");
+				for(nIndex = 0, count = 0; nIndex < BLK_NUM_MAX &&
+							count < msg_rpy->info.rpyblk.blk_alloc; nIndex++) {
+					if(FALSE == Devices->addr_entry[nIndex].inuse) {
+						Devices->addr_entry[nIndex].entry.vmem.blk_remote_index =
+							msg_rpy->info.rpyblk.blkinfo[count].remoteIndex;
+						Devices->addr_entry[nIndex].entry.vmem.blk_remote_addr = 
+							msg_rpy->info.rpyblk.blkinfo[count].remoteaddr;
+						Devices->addr_entry[nIndex].entry.vmem.blk_size = BLK_SIZE; 
+						Devices->addr_entry[nIndex].entry.vmem.serhost = serhost;
+						Devices->addr_entry[nIndex].entry.vmem.inuse = TRUE;
+						Devices->addr_entry[nIndex].remote = TRUE;
+						Devices->addr_entry[nIndex].inuse = TRUE;
+						count ++;
+					}
+				}
+				serhost->block_inuse += count;
+				serhost->block_available = msg_rpy->info.rpyblk.blk_rest_available;
 				break;
 			}
 		}
@@ -229,9 +248,9 @@ int vmem_daemon(void *data) {
 	while(!kthread_should_stop()) {
         schedule_timeout_interruptible(CALCULATE_PERIOD * HZ);
 		for(nIndex = 0, sumpage = 0, sumblk = 0; nIndex < BLK_NUM_MAX; nIndex++) {
-			if(pdev->addr_entry[nIndex].mapped) {
+			if(pdev->addr_entry[nIndex].inuse) {
 				sumblk++;
-				sumpage += pdev->addr_entry[nIndex].inuse_count;
+				sumpage += pdev->addr_entry[nIndex].inuse_page;
 			}
 		}
 		printk(KERN_INFO"sumpage=%d, sumblk=%d\n", sumpage, sumblk);
