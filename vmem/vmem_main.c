@@ -3,8 +3,11 @@
 #include "../common.h"
 #include "userspace/errors.h"
 #include "../net_msg.h"
+
 struct vmem_dev *Devices = NULL;
 struct cli_blk blktable[BLK_NUM_MAX];
+struct vpage_alloc vpage_alloc;
+struct vpage_read vpage_read;
 
 static int vmem_open(struct block_device *bdev, fmode_t mode) {
 	struct vmem_dev * dev = bdev->bd_disk->private_data;
@@ -328,6 +331,14 @@ static void setup_device(struct vmem_dev *dev, int which) {
 		blktable[nIndex].inuse_page = 0;
 	}
 	dev->addr_entry = blktable;
+	//init vpage alloc
+	memset(&vpage_alloc, 0 ,sizeof(struct vpage_alloc));
+	mutex_init(&vpage_alloc.access_mutex);
+	dev->vpage_alloc = &vpage_alloc;
+	//init vpage read
+	memset(&vpage_read, 0 ,sizeof(struct vpage_read));
+	mutex_init(&vpage_read.access_mutex);
+	dev->vpage_read = &vpage_read;
 	//init daemon thread
 	dev->DaemonThread = kthread_create(vmem_daemon, (void *)dev, "vmem daemon");
 	wake_up_process(dev->DaemonThread);
