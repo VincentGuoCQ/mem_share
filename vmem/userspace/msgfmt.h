@@ -9,7 +9,7 @@
 #define CLIHOST_OP_DEL_SERHOST_AVAIL		0x2
 #define CLIHOST_OP_DEL_SERHOST_INUSE		0x3
 #define CLIHOST_OP_MOD_SERHOST				0x4
-#define CLIHOST_OP_MAP_LOCAL				0x8
+#define CLIHOST_OP_MAP_LOCAL				0x7
 
 struct MsgCliOp {
 	unsigned int op;
@@ -20,38 +20,48 @@ struct MsgCliOp {
 			unsigned int block_num;
 		} addser;
 		struct {
+			struct in_addr host_addr;
+			unsigned int block_num;
+		} modser;
+		struct {
 			unsigned int block_num;
 		} maplocal;
 	} info;
 };
 
-#define CLIHOST_MEMCTRL_ALLOC_PAGE		0x1
-#define CLIHOST_MEMCTRL_FREE_PAGE		0x2
-
-struct MsgMemCtrl {
-	unsigned int ctrlId;
-	union {
-		struct {
-			unsigned int pagenum;
-		}allocpage;
-		struct {
-			unsigned int pagenum;
-		}freepage;
-	} info;
+struct MsgMemAlloc {
+	unsigned int vpagenum;
 };
-#endif
 
-#ifdef MEMPOOL
+#define VPAGE_PER_ALLOC 4
 
-#define SERHOST_OP_ADD_BLK		0x01
+#define VPAGE_SIZE_SHIFT	10
+#define VPAGE_SIZE			(1UL << VPAGE_SIZE_SHIFT)
 
-struct MsgSerOp {
-	unsigned int op;
-	union {
-		struct {
-			unsigned int block_num;
-		} addblk;
-	} info;
+struct MsgMemRet {
+	unsigned int vpagenum;
+	unsigned long vpageaddr[VPAGE_PER_ALLOC];
 };
-#endif
+
+#define VPAGE_PER_FREE 4
+struct MsgMemFree {
+	unsigned int vpagenum;
+	unsigned long vpageaddr[VPAGE_PER_ALLOC];
+};
+
+struct MsgMemRead {
+	unsigned long vpageaddr;
+};
+
+struct MsgMemReadRet {
+	unsigned long vpageaddr;
+	char Data[VPAGE_SIZE];
+};
+
+struct MsgMemWrite {
+	unsigned long vpageaddr;
+	char Data[VPAGE_SIZE];
+};
+#endif //VMEM
+
 #endif //MSGFMT_H
