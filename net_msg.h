@@ -6,7 +6,7 @@
 #define NETMSG_CLI_REQUEST_ALLOC_BLK	0x1
 #define NETMSG_CLI_REQUEST_FREE_BLK		0x2
 #define NETMSG_CLI_REQUEST_READ			0x3
-#define NETMSG_CLI_REQUEST_WRITR		0x4
+#define NETMSG_CLI_REQUEST_WRITE		0x4
 
 struct netmsg_req {
 	struct list_head ls_reqmsg;
@@ -22,12 +22,12 @@ struct netmsg_req {
 			} blk_table[BLK_MAX_PER_REQ];
 		} req_free_blk;
 		struct {
-			unsigned int blkIndex;
-			unsigned int offset;
+			unsigned int remoteIndex;
+			unsigned int pageIndex;
 		} req_read;
 		struct {
-			unsigned int blkIndex;
-			unsigned int offset;
+			unsigned int remoteIndex;
+			unsigned int pageIndex;
 		} req_write;
 	} info;
 };
@@ -51,14 +51,21 @@ struct netmsg_rpy {
 			unsigned int errId;
 		}rpyerr;
 		struct {
-			unsigned int blkIndex;
-			unsigned int offset;
-			unsigned int writebyte;
+			unsigned int remoteIndex;
+			unsigned int pageIndex;
 		} rpy_write;
 		struct {
-			unsigned int blkIndex;
-			unsigned int offset;
+			unsigned int remoteIndex;
+			unsigned int pageIndex;
 		} rpy_read;
 	} info;
+};
+
+#define VPAGE_SIZE_SHIFT	10
+#define VPAGE_SIZE			(1UL << VPAGE_SIZE_SHIFT)
+
+struct netmsg_wrdata {
+	struct list_head ls_req;
+	char data[VPAGE_SIZE];
 };
 #endif //NET_MSG_H

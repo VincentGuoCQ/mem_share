@@ -133,11 +133,11 @@ struct client_host {
 
 	struct mutex lshd_req_msg_mutex;
 	struct list_head lshd_req_msg;
-	struct mutex lshd_rpy_msg_mutex;
-	struct list_head lshd_rpy_msg;
+	struct mutex lshd_wrdata_mutex;
+	struct list_head lshd_wrdata;
 
 	struct kmem_cache * slab_netmsg_req;
-	struct kmem_cache * slab_netmsg_rpy;
+	struct kmem_cache * slab_netmsg_wrdata;
 };
 
 #define MEMPOOL_STATE_LISTEN 1
@@ -161,7 +161,7 @@ struct mempool_dev {
 	struct task_struct *ListenThread;
 
 	struct kmem_cache * slab_netmsg_req;
-	struct kmem_cache * slab_netmsg_rpy;
+	struct kmem_cache * slab_netmsg_wrdata;
 };
 
 #endif //MEMPOOL
@@ -193,11 +193,11 @@ struct server_host {
 
 	struct mutex lshd_req_msg_mutex;
 	struct list_head lshd_req_msg;
-	struct mutex lshd_rpy_msg_mutex;
-	struct list_head lshd_rpy_msg;
+	struct mutex lshd_wrdata_mutex;
+	struct list_head lshd_wrdata;
 
 	struct kmem_cache *slab_netmsg_req;
-	struct kmem_cache *slab_netmsg_rpy;
+	struct kmem_cache *slab_netmsg_wrdata;
 };
 
 struct vmem_blk {
@@ -249,15 +249,19 @@ struct vmem_dev {
 	unsigned int size;
 	char * data;
 	int media_change;
+
 	struct list_head lshd_available;
 	struct mutex lshd_avail_mutex;
 	struct list_head lshd_inuse;
 	struct mutex lshd_inuse_mutex;
+
 	struct kmem_cache * slab_server_host;
 	struct cli_blk * addr_entry;
 	struct task_struct *DaemonThread;
+
 	struct kmem_cache *slab_netmsg_req;
-	struct kmem_cache *slab_netmsg_rpy;
+	struct kmem_cache *slab_netmsg_wrdata;
+
 	struct vpage_alloc *vpage_alloc;
 	struct vpage_read *vpage_read;
 };
