@@ -476,3 +476,63 @@ err_args:
 	free(pmemreadret);
 	return ret;
 }
+
+int vmem_mod_server(int argc, char *argv[]) {
+	int opt = 0;
+	char *SerAddr = NULL, *SerBlockNum = NULL;
+	struct MsgCliOp * pCli= (struct MsgCliOp *)malloc(sizeof(struct MsgCliOp));
+	int ret = ERR_SUCCESS;
+	char path[SYSFS_PATH_MAX];
+	memset(pCli, 0, sizeof(struct MsgCliOp));
+	memset(path, 0, SYSFS_PATH_MAX);
+	
+	DEBUG_INFO("reset args:%s", argv[0]);
+	//option parse
+	for(;;) {
+		opt = getopt_long(argc, argv, "a:b:", modser_opt, NULL);
+		if(-1 == opt) {
+			break;
+		}
+		
+		switch(opt) {
+			case 'a':
+				DEBUG_INFO("server address:%s", optarg);
+				SerAddr = optarg;
+				break;
+			case 'b':
+				DEBUG_INFO("block num:%s", optarg);
+				SerBlockNum = optarg;
+				break;
+
+			default:
+				PRINT_INFO("option error:invalid option\n");
+		}
+	}
+	if( NULL == SerAddr || NULL == SerBlockNum) {
+		PRINT_INFO("argument error: server name or address missing\n");
+		ret = ERR_CLI_ARG_MISSING; 
+		goto err_args;
+	}
+
+	//copy argument to structure
+	if(inet_aton(SerAddr, &pCli->info.modser.host_addr) == 0) {
+		PRINT_INFO("argument error: IP address illegal\n");
+		ret = ERR_CLI_ARG_ILLEGAL;
+		goto err_args;
+	}
+	if((pCli->info.modser.block_num = atoi(SerBlockNum)) == 0) {
+		PRINT_INFO("argument error: IP address illegal\n");
+		ret = ERR_CLI_ARG_ILLEGAL;
+		goto err_args;
+	}
+	pCli->op = CLIHOST_OP_MOD_SERHOST;
+
+	//write to file
+	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
+				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_CLI_OP_PATH);
+	write_sysfs_attribute(path, (char *)pCli, sizeof(struct MsgCliOp));
+
+err_args:
+	free(pCli);
+	return ret;
+}

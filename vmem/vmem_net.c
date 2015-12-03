@@ -123,7 +123,9 @@ static int SerSendThread(void *data) {
     struct server_host *serhost = (struct server_host *)data;
 	struct msghdr msg;
 	struct list_head *p = NULL, *next = NULL;
+	struct list_head *pd = NULL, *dnext = NULL;
 	struct netmsg_req *msg_req = NULL;
+	struct netmsg_wrdata *msg_wrdata = NULL;
     int len;
 
 	memset(&msg_req, 0 ,sizeof(struct netmsg_req));
@@ -162,6 +164,34 @@ static int SerSendThread(void *data) {
             }
             //break;
         }
+        printk(KERN_ALERT "kernel_sendmsg: len=%d\n", len);
+		//if request is write
+		if(msg_req->msgID == NETMSG_CLI_REQUEST_WRITE) {
+			msg_wrdata = NULL;
+			mutex_lock(&serhost->lshd_wrdata_mutex);
+			list_for_each_safe(pd, dnext, &serhost->lshd_wrdata) {
+				msg_wrdata = list_entry(pd, struct netmsg_wrdata, ls_req);
+				break;
+			}
+			mutex_unlock(&serhost->lshd_wrdata_mutex);
+			if(msg_wrdata) {
+				iov.iov_base = (void *)msg_wrdata;
+				iov.iov_len = sizeof(struct netmsg_wrdata);
+				len = kernel_sendmsg(serhost->sock, &msg, &iov, 1, sizeof(struct netmsg_wrdata));
+				if (len != sizeof(struct netmsg_wrdata)) {
+					printk(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%ld\n",
+								len, sizeof(struct netmsg_wrdata));
+					if (len == -ECONNREFUSED) {
+						printk(KERN_ALERT "Receive Port Unreachable packet!\n");
+					}
+				}
+			}
+			mutex_lock(&serhost->lshd_wrdata_mutex);
+			list_del(pd);
+			mutex_unlock(&serhost->lshd_wrdata_mutex);
+			kmem_cache_free(serhost->slab_netmsg_wrdata, msg_wrdata);
+		}
+
 		mutex_lock(&serhost->lshd_req_msg_mutex);
 		list_del(p);
 		mutex_unlock(&serhost->lshd_req_msg_mutex);

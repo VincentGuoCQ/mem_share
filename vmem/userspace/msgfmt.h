@@ -20,6 +20,10 @@ struct MsgCliOp {
 			unsigned int block_num;
 		} addser;
 		struct {
+			struct in_addr host_addr;
+			unsigned int block_num;
+		} modser;
+		struct {
 			unsigned int block_num;
 		} maplocal;
 	} info;
