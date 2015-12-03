@@ -53,6 +53,9 @@
 #define BLK_NUM_MAX_SHIFT	3
 #define BLK_NUM_MAX		(1UL << BLK_NUM_MAX_SHIFT)
 
+#define GET_BLK_INDEX(x)		(( x >> BLK_SIZE_SHIFT) & ((1UL <<(BLK_NUM_MAX_SHIFT))-1))
+#define GET_VPAGE_INDEX(x)		(( x >> VPAGE_SIZE_SHIFT) & ((1UL <<(BLK_SIZE_SHIFT -VPAGE_SIZE_SHIFT))-1))
+
 #define VPAGE_NUM_IN_BLK	(1UL << (BLK_SIZE_SHIFT - VPAGE_SIZE_SHIFT))
 
 #define HOST_NAME_LEN		32
@@ -130,11 +133,11 @@ struct client_host {
 
 	struct mutex lshd_req_msg_mutex;
 	struct list_head lshd_req_msg;
-	struct mutex lshd_rpy_msg_mutex;
-	struct list_head lshd_rpy_msg;
+	struct mutex lshd_wrdata_mutex;
+	struct list_head lshd_wrdata;
 
 	struct kmem_cache * slab_netmsg_req;
-	struct kmem_cache * slab_netmsg_rpy;
+	struct kmem_cache * slab_netmsg_data;
 };
 
 #define MEMPOOL_STATE_LISTEN 1
@@ -158,10 +161,10 @@ struct mempool_dev {
 	struct task_struct *ListenThread;
 
 	struct kmem_cache * slab_netmsg_req;
-	struct kmem_cache * slab_netmsg_rpy;
+	struct kmem_cache * slab_netmsg_data;
 };
 
-#endif
+#endif //MEMPOOL
 
 #ifdef VMEM
 
@@ -190,18 +193,19 @@ struct server_host {
 
 	struct mutex lshd_req_msg_mutex;
 	struct list_head lshd_req_msg;
-	struct mutex lshd_rpy_msg_mutex;
-	struct list_head lshd_rpy_msg;
+	struct mutex lshd_wrdata_mutex;
+	struct list_head lshd_wrdata;
 
 	struct kmem_cache *slab_netmsg_req;
-	struct kmem_cache *slab_netmsg_rpy;
+	struct kmem_cache *slab_netmsg_data;
 };
 
 struct vmem_blk {
 	struct server_host *serhost;
 	bool:1;
 	bool inuse:1;
-	unsigned long blk_start_pos;
+	unsigned int blk_remote_index;
+	unsigned long blk_remote_addr;
 	unsigned long blk_size;
 };
 
@@ -210,19 +214,32 @@ struct vmem_blk {
 struct cli_blk {
 	struct mutex handle_mutex;
 	union {
-		struct vmem_blk * vmem;
+		struct vmem_blk vmem;
 		struct native_blk {
 			void *addr;
 			struct page *pages;
 		}native;
 	} entry;
 	bool:1;
-	bool mapped:1;
+	bool remote:1;
+	bool inuse:1;
 	bool native:1;
 	bool page_bitmap[VPAGE_NUM_IN_BLK];
-	unsigned int inuse_count;
+	unsigned int inuse_page;
 };
 
+#define VPAGE_PER_ALLOC 4
+
+struct vpage_alloc {
+	struct mutex access_mutex;
+	unsigned int vpagenum;
+	unsigned long vpageaddr[VPAGE_PER_ALLOC];
+};
+struct vpage_read {
+	struct mutex access_mutex;
+	unsigned long vpageaddr;
+	char Data[VPAGE_SIZE];
+};
 struct vmem_dev {
 	struct request_queue *queue;
 	struct gendisk *gd;
@@ -232,20 +249,26 @@ struct vmem_dev {
 	unsigned int size;
 	char * data;
 	int media_change;
+
 	struct list_head lshd_available;
 	struct mutex lshd_avail_mutex;
 	struct list_head lshd_inuse;
 	struct mutex lshd_inuse_mutex;
+
 	struct kmem_cache * slab_server_host;
 	struct cli_blk * addr_entry;
 	struct task_struct *DaemonThread;
+
 	struct kmem_cache *slab_netmsg_req;
-	struct kmem_cache *slab_netmsg_rpy;
+	struct kmem_cache *slab_netmsg_data;
+
+	struct vpage_alloc *vpage_alloc;
+	struct vpage_read *vpage_read;
 };
 
 int vmem_daemon(void *);
 
-#endif
+#endif //VMEM
 
 int mempool_listen_thread(void *data);
 int create_sysfs_file(struct device *dev);

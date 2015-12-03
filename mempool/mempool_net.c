@@ -35,6 +35,7 @@ static int CliRecvThread(void *data) {
     struct client_host *clihost = (struct client_host *)data;
     struct msghdr msg;
 	struct netmsg_req *msg_req = NULL;
+	struct netmsg_data *msg_wrdata = NULL;
     int len = 0;
 
 	msg.msg_name = NULL;
@@ -70,6 +71,30 @@ static int CliRecvThread(void *data) {
             }
 			continue;
         }
+		//request is write
+		if(msg_req->msgID == NETMSG_CLI_REQUEST_WRITE) {
+				msg_wrdata = (struct netmsg_data *)kmem_cache_alloc(clihost->slab_netmsg_data, GFP_USER);
+				iov.iov_base = (void *)msg_wrdata;
+				iov.iov_len = sizeof(struct netmsg_data);
+
+				len = kernel_recvmsg(clihost->sock, &msg, &iov, 1,
+							sizeof(struct netmsg_data), MSG_DONTWAIT);
+				//close of client
+				if(len == 0) {
+					break;
+				}
+				if (len < 0 || len != sizeof(struct netmsg_data)) {
+					//printk(KERN_ALERT"mempool handlethread: kernel_recvmsg err, len=%d, buffer=%ld\n",
+					//        len, sizeof(struct netmsg_req));
+			       if (len == -ECONNREFUSED) {
+					   printk(KERN_ALERT"mempool thread: Receive Port Unreachable packet!\n");
+				   }
+				}
+				mutex_lock(&clihost->lshd_wrdata_mutex);
+				list_add_tail(&msg_wrdata->ls_req, &clihost->lshd_wrdata);
+				printk(KERN_ALERT"mempool thread: add write data to list!\n");
+				mutex_unlock(&clihost->lshd_wrdata_mutex);
+		}
 		mutex_lock(&clihost->lshd_req_msg_mutex);
 		list_add_tail(&msg_req->ls_reqmsg, &clihost->lshd_req_msg);
         printk(KERN_ALERT"mempool thread: add netmsg to list!\n");
@@ -125,17 +150,18 @@ static int CliSendThread(void *data) {
 			schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 			msg_req = list_entry(ls_req, struct netmsg_req, ls_reqmsg);
 			list_del(&msg_req->ls_reqmsg);
-			printk(KERN_INFO"mempool CliRecvThread: delete from list\n");
+			printk(KERN_INFO"mempool CliRecvThread: req msg  delete from list\n");
 			break;
 		}
 		mutex_unlock(&clihost->lshd_req_msg_mutex);
 
 		memset(msg_rpy, 0, sizeof(struct netmsg_rpy));
 		switch(msg_req->msgID) {
+			//alloc block
 			case NETMSG_CLI_REQUEST_ALLOC_BLK: {
 				unsigned int nIndex = 0, count = 0;
 
-				msg_rpy->msgID = NETMSG_SER_REPLY_BLK;
+				msg_rpy->msgID = NETMSG_SER_REPLY_ALLOC_BLK;
 
 				mutex_lock(&Devices->blk_mutex);
 				for(nIndex = 0, count = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL && count < BLK_MAX_PER_REQ &&
@@ -151,15 +177,45 @@ static int CliSendThread(void *data) {
 				msg_rpy->info.rpyblk.blk_rest_available = 0;
 				mutex_unlock(&Devices->blk_mutex);
 
-				printk(KERN_INFO"mempool thread: Receive alloc blk request\n");
+				printk(KERN_INFO"mempool thread: send alloc blk reply\n");
 		
-			break;
+				break;
 			}
+			//write data
+			case NETMSG_CLI_REQUEST_WRITE: {
+				struct list_head * pd = NULL, *dnext = NULL;
+				struct netmsg_data *msg_wrdata = NULL;
+				unsigned int nBlkIndex = 0, nPageIndex = 0;
+				mutex_lock(&clihost->lshd_wrdata_mutex);
+				if(list_empty(&clihost->lshd_wrdata)) {
+					mutex_unlock(&clihost->lshd_wrdata_mutex);
+					break;
+				}
+				list_for_each_safe(pd, dnext, &clihost->lshd_wrdata) {
+					msg_wrdata = list_entry(pd, struct netmsg_data, ls_req);
+					list_del(&msg_wrdata->ls_req);
+					printk(KERN_INFO"mempool CliSendThread: write data delete from list\n");
+					break;
+				}
+				mutex_unlock(&clihost->lshd_wrdata_mutex);
+
+				nBlkIndex = msg_req->info.req_write.remoteIndex;
+				nPageIndex = msg_req->info.req_write.pageIndex;
+
+				printk(KERN_INFO"mempool CliSendThread: nBlkIndex %d, nPageIndex %d\n", nBlkIndex, nPageIndex);
+				printk(KERN_INFO"mempool CliSendThread: data %s\n", msg_wrdata->data);
+				mutex_lock(&Devices->blk_mutex);
+				memcpy(Devices->blk[nBlkIndex].blk_addr + nPageIndex * VPAGE_SIZE,
+							msg_wrdata->data, VPAGE_SIZE);
+				mutex_unlock(&Devices->blk_mutex);
+				break;
+			}
+			default:
+				continue;
 		}
 
 		iov.iov_base = (void *)msg_rpy;
 		iov.iov_len = sizeof(struct netmsg_rpy);
-
 		len = kernel_sendmsg(clihost->sock, &msg, &iov, 1, sizeof(struct netmsg_rpy));
 
 		if(len != sizeof(struct netmsg_rpy)) {
@@ -237,13 +293,13 @@ int mempool_listen_thread(void *data)
 		kernel_getpeername(cli_sock, (struct sockaddr *)&clihost->host_addr, &sockaddrlen);
 
 		//init client host, slab, list_head
-		mutex_init(&clihost->lshd_rpy_msg_mutex);
 		mutex_init(&clihost->lshd_req_msg_mutex);
+		mutex_init(&clihost->lshd_wrdata_mutex);
 		mutex_init(&clihost->ptr_mutex);
 		INIT_LIST_HEAD(&clihost->lshd_req_msg);
-		INIT_LIST_HEAD(&clihost->lshd_rpy_msg);
+		INIT_LIST_HEAD(&clihost->lshd_wrdata);
 		clihost->slab_netmsg_req = dev->slab_netmsg_req;
-		clihost->slab_netmsg_rpy = dev->slab_netmsg_rpy; 
+		clihost->slab_netmsg_data = dev->slab_netmsg_data;
 
 		//add to list
 		mutex_lock(&dev->lshd_rent_client_mutex);
