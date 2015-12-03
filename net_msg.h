@@ -22,10 +22,12 @@ struct netmsg_req {
 			} blk_table[BLK_MAX_PER_REQ];
 		} req_free_blk;
 		struct {
+			unsigned long vpageaddr;
 			unsigned int remoteIndex;
 			unsigned int pageIndex;
 		} req_read;
 		struct {
+			unsigned long vpageaddr;
 			unsigned int remoteIndex;
 			unsigned int pageIndex;
 		} req_write;
@@ -34,6 +36,7 @@ struct netmsg_req {
 
 #define NETMSG_SER_REPLY_ALLOC_BLK		0x1
 #define NETMSG_SER_REPLY_ERR			0x2
+#define NETMSG_SER_REPLY_READ			0x3
 
 struct netmsg_rpy {
 	struct list_head ls_rpymsg;
@@ -51,10 +54,12 @@ struct netmsg_rpy {
 			unsigned int errId;
 		}rpyerr;
 		struct {
+			unsigned long vpageaddr;
 			unsigned int remoteIndex;
 			unsigned int pageIndex;
 		} rpy_write;
 		struct {
+			unsigned long vpageaddr;
 			unsigned int remoteIndex;
 			unsigned int pageIndex;
 		} rpy_read;
@@ -64,7 +69,7 @@ struct netmsg_rpy {
 #define VPAGE_SIZE_SHIFT	10
 #define VPAGE_SIZE			(1UL << VPAGE_SIZE_SHIFT)
 
-struct netmsg_wrdata {
+struct netmsg_data {
 	struct list_head ls_req;
 	char data[VPAGE_SIZE];
 };

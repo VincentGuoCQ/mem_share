@@ -137,7 +137,7 @@ struct client_host {
 	struct list_head lshd_wrdata;
 
 	struct kmem_cache * slab_netmsg_req;
-	struct kmem_cache * slab_netmsg_wrdata;
+	struct kmem_cache * slab_netmsg_data;
 };
 
 #define MEMPOOL_STATE_LISTEN 1
@@ -161,7 +161,7 @@ struct mempool_dev {
 	struct task_struct *ListenThread;
 
 	struct kmem_cache * slab_netmsg_req;
-	struct kmem_cache * slab_netmsg_wrdata;
+	struct kmem_cache * slab_netmsg_data;
 };
 
 #endif //MEMPOOL
@@ -197,7 +197,7 @@ struct server_host {
 	struct list_head lshd_wrdata;
 
 	struct kmem_cache *slab_netmsg_req;
-	struct kmem_cache *slab_netmsg_wrdata;
+	struct kmem_cache *slab_netmsg_data;
 };
 
 struct vmem_blk {
@@ -260,7 +260,7 @@ struct vmem_dev {
 	struct task_struct *DaemonThread;
 
 	struct kmem_cache *slab_netmsg_req;
-	struct kmem_cache *slab_netmsg_wrdata;
+	struct kmem_cache *slab_netmsg_data;
 
 	struct vpage_alloc *vpage_alloc;
 	struct vpage_read *vpage_read;

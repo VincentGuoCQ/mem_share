@@ -80,7 +80,7 @@ static void destory_device(struct mempool_dev *dev, int which) {
 	list_for_each_safe(p, next, &dev->lshd_rent_client) {
 		struct list_head *sp = NULL, *snext = NULL;
 		struct netmsg_req *netmsg_req = NULL;
-		struct netmsg_wrdata *netmsg_wrdata = NULL;
+		struct netmsg_data *netmsg_wrdata = NULL;
 		clihost = list_entry(p, struct client_host, ls_rent);
 
 		mutex_lock(&clihost->ptr_mutex);
@@ -115,9 +115,9 @@ static void destory_device(struct mempool_dev *dev, int which) {
 
 		mutex_lock(&clihost->lshd_wrdata_mutex);
 		list_for_each_safe(sp, snext, &clihost->lshd_wrdata) {
-			netmsg_wrdata = list_entry(sp, struct netmsg_wrdata, ls_req);
+			netmsg_wrdata = list_entry(sp, struct netmsg_data, ls_req);
 			list_del(&netmsg_wrdata->ls_req);
-			kmem_cache_free(clihost->slab_netmsg_wrdata, netmsg_wrdata);
+			kmem_cache_free(clihost->slab_netmsg_data, netmsg_wrdata);
 		}
 		mutex_unlock(&clihost->lshd_wrdata_mutex);
 		printk(KERN_INFO"mempool:destory clienthost wrdata msg\n");
@@ -135,8 +135,8 @@ static void destory_device(struct mempool_dev *dev, int which) {
 	if(dev->slab_netmsg_req) {
 		kmem_cache_destroy(dev->slab_netmsg_req);
 	}
-	if(dev->slab_netmsg_wrdata) {
-		kmem_cache_destroy(dev->slab_netmsg_wrdata);
+	if(dev->slab_netmsg_data) {
+		kmem_cache_destroy(dev->slab_netmsg_data);
 	}
 	printk(KERN_INFO"mempool:destory client slab\n");
 	//destory listen socket thread
@@ -238,12 +238,12 @@ static int setup_device(struct mempool_dev *dev, int which) {
 		ret = KERERR_CREATE_SLAB;
 		goto err_netmsg_req_slab;
 	}
-	dev->slab_netmsg_wrdata = kmem_cache_create("mempool_netmsg_wrdata",
-				sizeof(struct netmsg_wrdata), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
-	if(NULL == dev->slab_netmsg_wrdata) {
+	dev->slab_netmsg_data = kmem_cache_create("mempool_netmsg_data",
+				sizeof(struct netmsg_data), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
+	if(NULL == dev->slab_netmsg_data) {
 		printk(KERN_NOTICE"mempool:create mempool_clihost slab fail\n");
 		ret = KERERR_CREATE_SLAB;
-		goto err_netmsg_wrdata_slab;
+		goto err_netmsg_data_slab;
 	}
 	//init mutex
 	mutex_init(&dev->lshd_rent_client_mutex);
@@ -268,8 +268,8 @@ static int setup_device(struct mempool_dev *dev, int which) {
 
 	return ret;
 err_create_thread:
-	kmem_cache_destroy(dev->slab_netmsg_wrdata);
-err_netmsg_wrdata_slab:
+	kmem_cache_destroy(dev->slab_netmsg_data);
+err_netmsg_data_slab:
 	kmem_cache_destroy(dev->slab_netmsg_req);
 err_netmsg_req_slab:
 	kmem_cache_destroy(dev->slab_client_host);
