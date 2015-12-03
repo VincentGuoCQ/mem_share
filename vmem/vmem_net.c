@@ -1,6 +1,6 @@
-#define VMEM
-
+#include "../include.h"
 #include "../common.h"
+#include "vmem_common.h"
 #include <linux/kthread.h>
 #include "../kererr.h"
 #include "../net_msg.h"

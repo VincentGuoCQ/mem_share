@@ -1,6 +1,6 @@
-#define MEMPOOL
-
+#include "../include.h"
 #include "../common.h"
+#include "mempool_common.h"
 #include "userspace/errors.h"
 #include "userspace/msgfmt.h"
 

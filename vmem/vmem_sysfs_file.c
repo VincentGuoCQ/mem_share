@@ -1,6 +1,6 @@
-#define VMEM
-
+#include "../include.h"
 #include "../common.h"
+#include "vmem_common.h"
 #include "userspace/errors.h"
 #include "userspace/msgfmt.h"
 #include "../net_msg.h"

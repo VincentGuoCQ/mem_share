@@ -1,8 +1,6 @@
 #ifndef MSGFMT_H
 #define MSGFMT_H
 
-#ifdef MEMPOOL
-
 #define SERHOST_OP_ADD_BLK		0x01
 
 struct MsgSerOp {
@@ -13,7 +11,5 @@ struct MsgSerOp {
 		} addblk;
 	} info;
 };
-
-#endif //MEMPOOL
 
 #endif //MSGFMT_H

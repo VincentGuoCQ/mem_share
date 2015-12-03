@@ -28,7 +28,7 @@ static const struct command cmds[] = {
 		.usage = NULL
 	},
 	{
-		.name  = "delcli"
+		.name  = "delcli",
 		.fn    = mempool_add_block,
 		.help  = NULL,
 		.usage = NULL
