@@ -208,8 +208,8 @@ static void destory_device(struct vmem_dev *dev, int which) {
 	if(dev->slab_netmsg_req) {
 		kmem_cache_destroy(dev->slab_netmsg_req);
 	}
-	if(dev->slab_netmsg_wrdata) {
-		kmem_cache_destroy(dev->slab_netmsg_wrdata);
+	if(dev->slab_netmsg_data) {
+		kmem_cache_destroy(dev->slab_netmsg_data);
 	}
 	//delete sysfs file
 	delete_sysfs_file(disk_to_dev(dev->gd));
@@ -313,11 +313,11 @@ static void setup_device(struct vmem_dev *dev, int which) {
 		printk(KERN_NOTICE"vmem:create vmem_serhost slab fail\n");
 		goto err_netmsg_req_slab;
 	}
-	dev->slab_netmsg_wrdata = kmem_cache_create("vmem_netmsg_wrdata",
-				sizeof(struct netmsg_wrdata), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
-	if(NULL == dev->slab_netmsg_wrdata) {
+	dev->slab_netmsg_data = kmem_cache_create("vmem_netmsg_data",
+				sizeof(struct netmsg_data), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
+	if(NULL == dev->slab_netmsg_data) {
 		printk(KERN_NOTICE"vmem:create vmem_serhost slab fail\n");
-		goto err_netmsg_wrdata_slab;
+		goto err_netmsg_data_slab;
 	}
 	//init mutex
 	mutex_init(&dev->lshd_avail_mutex);
@@ -344,8 +344,8 @@ static void setup_device(struct vmem_dev *dev, int which) {
 	wake_up_process(dev->DaemonThread);
 	return;
 
-	kmem_cache_destroy(dev->slab_netmsg_wrdata);
-err_netmsg_wrdata_slab:
+	kmem_cache_destroy(dev->slab_netmsg_data);
+err_netmsg_data_slab:
 	kmem_cache_destroy(dev->slab_netmsg_req);
 err_netmsg_req_slab:
 	kmem_cache_destroy(dev->slab_server_host);

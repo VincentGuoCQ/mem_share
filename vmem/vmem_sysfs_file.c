@@ -146,7 +146,7 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 				INIT_LIST_HEAD(&serhostnew->lshd_req_msg);
 				INIT_LIST_HEAD(&serhostnew->lshd_wrdata);
 				serhostnew->slab_netmsg_req = Devices->slab_netmsg_req;
-				serhostnew->slab_netmsg_wrdata = Devices->slab_netmsg_wrdata;
+				serhostnew->slab_netmsg_data = Devices->slab_netmsg_data;
 				mutex_lock(&Devices->lshd_avail_mutex);
 				list_add_tail(&serhostnew->ls_available, &Devices->lshd_available);
 				mutex_unlock(&Devices->lshd_avail_mutex);
@@ -418,8 +418,28 @@ static ssize_t clihost_read_store(struct device *dev, struct device_attribute *a
 	}
 	//vpage in remote
 	else if(Devices->addr_entry[nBlkIndex].remote){
+		struct netmsg_req * msg_req = NULL;
+		struct server_host *serhost = NULL;
+		serhost = Devices->addr_entry[nBlkIndex].entry.vmem.serhost;
+		if(!serhost) {
+			goto err_null_ptr;
+		}
+		msg_req = (struct netmsg_req *)kmem_cache_alloc(serhost->slab_netmsg_req, GFP_USER);
+		memset((void *)msg_req, 0, sizeof(struct netmsg_req));
+
+		//post read msg to list
+		msg_req->msgID = NETMSG_CLI_REQUEST_READ;
+		msg_req->info.req_read.vpageaddr = memread.vpageaddr;
+		msg_req->info.req_read.remoteIndex
+			= Devices->addr_entry[nBlkIndex].entry.vmem.blk_remote_index;
+		msg_req->info.req_read.pageIndex = nPageIndex;
+		mutex_lock(&serhost->lshd_req_msg_mutex);
+		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
+		mutex_unlock(&serhost->lshd_req_msg_mutex);
+		printk(KERN_INFO"add read msg in inuse server\n");
 	}
 
+err_null_ptr:
 	return count;
 }
 static ssize_t clihost_read_show(struct device *dev, struct device_attribute *attr, char *buf) {
@@ -484,33 +504,34 @@ static ssize_t clihost_write_store(struct device *dev, struct device_attribute *
 	//vpage in remote
 	else if(Devices->addr_entry[nBlkIndex].remote){
 		struct netmsg_req * msg_req = NULL;
-		struct netmsg_wrdata * msg_wrdata = NULL;
+		struct netmsg_data * msg_wrdata = NULL;
 		struct server_host *serhost = NULL;
 		serhost = Devices->addr_entry[nBlkIndex].entry.vmem.serhost;
 		if(!serhost) {
 			goto err_null_ptr;
 		}
 		msg_req = (struct netmsg_req *)kmem_cache_alloc(serhost->slab_netmsg_req, GFP_USER);
-		msg_wrdata = (struct netmsg_wrdata *)kmem_cache_alloc(serhost->slab_netmsg_wrdata, GFP_USER);
+		msg_wrdata = (struct netmsg_data *)kmem_cache_alloc(serhost->slab_netmsg_data, GFP_USER);
 		memset((void *)msg_req, 0, sizeof(struct netmsg_req));
-		memset((void *)msg_wrdata, 0, sizeof(struct netmsg_wrdata));
+		memset((void *)msg_wrdata, 0, sizeof(struct netmsg_data));
 
 		//post write msg to list
 		msg_req->msgID = NETMSG_CLI_REQUEST_WRITE;
+		msg_req->info.req_write.vpageaddr = pmemwrite->vpageaddr;
 		msg_req->info.req_write.remoteIndex
 			= Devices->addr_entry[nBlkIndex].entry.vmem.blk_remote_index;
 		msg_req->info.req_write.pageIndex = nPageIndex;
 		mutex_lock(&serhost->lshd_req_msg_mutex);
 		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
-		printk(KERN_INFO"add write msg in inuse server\n");
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
+		printk(KERN_INFO"add write msg in inuse server\n");
 
 		//post data to list
 		memcpy(msg_wrdata->data, pmemwrite->Data, VPAGE_SIZE);
 		mutex_lock(&serhost->lshd_wrdata_mutex);
 		list_add_tail(&msg_wrdata->ls_req, &serhost->lshd_wrdata);
-		printk(KERN_INFO"add write data in inuse server\n");
 		mutex_unlock(&serhost->lshd_wrdata_mutex);
+		printk(KERN_INFO"add write data in inuse server\n");
 
 	}
 

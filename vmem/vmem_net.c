@@ -109,6 +109,9 @@ static int SerRecvThread(void *data) {
 				serhost->block_available = msg_rpy->info.rpyblk.blk_rest_available;
 				break;
 			}
+			case NETMSG_SER_REPLY_READ: {
+				break;
+			}
 		}
 	}
 err_device_ptr:
@@ -125,7 +128,7 @@ static int SerSendThread(void *data) {
 	struct list_head *p = NULL, *next = NULL;
 	struct list_head *pd = NULL, *dnext = NULL;
 	struct netmsg_req *msg_req = NULL;
-	struct netmsg_wrdata *msg_wrdata = NULL;
+	struct netmsg_data *msg_wrdata = NULL;
     int len;
 
 	memset(&msg_req, 0 ,sizeof(struct netmsg_req));
@@ -170,17 +173,17 @@ static int SerSendThread(void *data) {
 			msg_wrdata = NULL;
 			mutex_lock(&serhost->lshd_wrdata_mutex);
 			list_for_each_safe(pd, dnext, &serhost->lshd_wrdata) {
-				msg_wrdata = list_entry(pd, struct netmsg_wrdata, ls_req);
+				msg_wrdata = list_entry(pd, struct netmsg_data, ls_req);
 				break;
 			}
 			mutex_unlock(&serhost->lshd_wrdata_mutex);
 			if(msg_wrdata) {
 				iov.iov_base = (void *)msg_wrdata;
-				iov.iov_len = sizeof(struct netmsg_wrdata);
-				len = kernel_sendmsg(serhost->sock, &msg, &iov, 1, sizeof(struct netmsg_wrdata));
-				if (len != sizeof(struct netmsg_wrdata)) {
+				iov.iov_len = sizeof(struct netmsg_data);
+				len = kernel_sendmsg(serhost->sock, &msg, &iov, 1, sizeof(struct netmsg_data));
+				if (len != sizeof(struct netmsg_data)) {
 					printk(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%ld\n",
-								len, sizeof(struct netmsg_wrdata));
+								len, sizeof(struct netmsg_data));
 					if (len == -ECONNREFUSED) {
 						printk(KERN_ALERT "Receive Port Unreachable packet!\n");
 					}
@@ -189,7 +192,7 @@ static int SerSendThread(void *data) {
 			mutex_lock(&serhost->lshd_wrdata_mutex);
 			list_del(pd);
 			mutex_unlock(&serhost->lshd_wrdata_mutex);
-			kmem_cache_free(serhost->slab_netmsg_wrdata, msg_wrdata);
+			kmem_cache_free(serhost->slab_netmsg_data, msg_wrdata);
 		}
 
 		mutex_lock(&serhost->lshd_req_msg_mutex);
