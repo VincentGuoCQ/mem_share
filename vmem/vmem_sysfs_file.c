@@ -544,6 +544,10 @@ static DEVICE_ATTR(clihost_write, S_IWUSR, NULL, clihost_write_store);
 int create_sysfs_file(struct device *dev) {
 	int ret = ERR_SUCCESS;
 	
+	if(!dev) {
+		ret = ERR_VMEM_NULL_PTR;
+		goto err_null_ptr;
+	}
 	ret = device_create_file(dev, &dev_attr_clihost_priser);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
@@ -607,6 +611,7 @@ err_sys_create_clihost_priblk:
 err_sys_create_clihost_op:
 	device_remove_file(dev, &dev_attr_clihost_priser);
 err_sys_create_clihost_priser:
+err_null_ptr:
 	return ret;
 }
 void delete_sysfs_file(struct device *dev) {
