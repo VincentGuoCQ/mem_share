@@ -176,7 +176,7 @@ static int setup_device(struct mempool_dev *dev, dev_t devno) {
 	dev->dev = device_create(dev->mempool_class, NULL, dev->devno, NULL, MEMPOOL_NAME);
 	//create sysfs file
 	ret = create_sysfs_file(dev->dev);
-	if(ret == ERR_MEMPOOL_CREATE_FILE) {
+	if(ret == KERERR_CREATE_FILE) {
 		printk(KERN_NOTICE"mempool:create sysfs file fail\n");
 		ret = KERERR_CREATE_FILE;
 		goto err_sysfs_create;

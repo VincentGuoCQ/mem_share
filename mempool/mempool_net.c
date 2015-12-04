@@ -133,6 +133,7 @@ static int CliSendThread(void *data) {
 	msg.msg_namelen = 0;
 	msg.msg_control = NULL;
 	msg.msg_controllen = 0;
+
     while (!kthread_should_stop()) {
         schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 		mutex_lock(&clihost->ptr_mutex);

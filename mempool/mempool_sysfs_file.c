@@ -1,5 +1,6 @@
 #include "../include.h"
 #include "../common.h"
+#include "../kererr.h"
 #include "mempool_common.h"
 #include "userspace/errors.h"
 #include "userspace/msgfmt.h"
@@ -109,29 +110,29 @@ static ssize_t serhost_cfg_store(struct device *dev, struct device_attribute *at
 static DEVICE_ATTR_WO(serhost_cfg);
 
 int create_sysfs_file(struct device *dev) {
-	int ret = ERR_SUCCESS;
+	int ret = KERERR_SUCCESS;
 	if(!dev) {
-		ret = ERR_MEMPOOL_NULL_PTR;
+		ret = KERERR_NULL_PTR;
 		goto err_null_ptr;
 	}
 	ret = device_create_file(dev, &dev_attr_clihost_state);
 	if (ret) {
 		printk(KERN_NOTICE"mempool:create sysfs file clihost_state error: %d", ret);
-		ret = ERR_MEMPOOL_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_state;
 	}
 
 	ret = device_create_file(dev, &dev_attr_serhost_cfg);
 	if (ret) {
 		printk(KERN_NOTICE"mempool:create sysfs file serhost_cfg error: %d", ret);
-		ret = ERR_MEMPOOL_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_serhost_cfg;
 	}
 
 	ret = device_create_file(dev, &dev_attr_blk_state);
 	if (ret) {
 		printk(KERN_NOTICE"mempool:create sysfs file blk_state error: %d", ret);
-		ret = ERR_MEMPOOL_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_blk_state;
 	}
 	return ret;
