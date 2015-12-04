@@ -10,8 +10,7 @@
 #include <linux/mm.h>
 #include <linux/sched.h>
 #include <linux/init.h>
-#include <linux/blkdev.h>
-#include <linux/genhd.h>
+#include <linux/cdev.h>
 #include <asm/io.h>
 #include <asm/uaccess.h>
 #include <linux/init.h>

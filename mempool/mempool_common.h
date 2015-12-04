@@ -2,7 +2,7 @@
 #define MEMPOOL_COMMON_H
 
 static int mempool_major = 0;
-static int mempool_minor= 1;
+static int mempool_minor= 0;
 
 module_param(mempool_major, int, 0);
 module_param(mempool_minor, int, 0);
@@ -62,9 +62,10 @@ struct client_host {
 
 struct mempool_dev {
 	struct request_queue *queue;
-	struct gendisk *gd;
-	struct timer_list timer;
-	spinlock_t lock;
+	struct cdev gd;
+	struct class *mempool_class;
+	struct device *dev;
+	dev_t devno;
 
 	struct list_head lshd_rent_client;
 	struct mutex lshd_rent_client_mutex;
