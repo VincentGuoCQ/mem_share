@@ -1,5 +1,6 @@
 #include "../include.h"
 #include "../common.h"
+#include "../kererr.h"
 #include "vmem_common.h"
 #include "userspace/errors.h"
 #include "userspace/msgfmt.h"
@@ -542,58 +543,58 @@ err_null_ptr:
 static DEVICE_ATTR(clihost_write, S_IWUSR, NULL, clihost_write_store);
 
 int create_sysfs_file(struct device *dev) {
-	int ret = ERR_SUCCESS;
+	int ret = KERERR_SUCCESS;
 	
 	if(!dev) {
-		ret = ERR_VMEM_NULL_PTR;
+		ret = KERERR_NULL_PTR;
 		goto err_null_ptr;
 	}
 	ret = device_create_file(dev, &dev_attr_clihost_priser);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_priser;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_op);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_op;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_priblk);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_priblk;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_alloc);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_alloc;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_free);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_free;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_read);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_read;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_write);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_write;
 	}
 
