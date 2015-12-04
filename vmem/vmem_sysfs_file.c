@@ -584,24 +584,24 @@ int create_sysfs_file(struct device *dev) {
 		goto err_sys_create_clihost_free;
 	}
 
-	ret = device_create_file(dev, &dev_attr_clihost_read);
-	if (ret) {
-		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = KERERR_CREATE_FILE;
-		goto err_sys_create_clihost_read;
-	}
-
-	ret = device_create_file(dev, &dev_attr_clihost_write);
-	if (ret) {
-		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = KERERR_CREATE_FILE;
-		goto err_sys_create_clihost_write;
-	}
+//	ret = device_create_file(dev, &dev_attr_clihost_read);
+//	if (ret) {
+//		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
+//		ret = KERERR_CREATE_FILE;
+//		goto err_sys_create_clihost_read;
+//	}
+//
+//	ret = device_create_file(dev, &dev_attr_clihost_write);
+//	if (ret) {
+//		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
+//		ret = KERERR_CREATE_FILE;
+//		goto err_sys_create_clihost_write;
+//	}
 
 	return ret;
-err_sys_create_clihost_write:
-	device_remove_file(dev, &dev_attr_clihost_read);
-err_sys_create_clihost_read:
+//err_sys_create_clihost_write:
+//	device_remove_file(dev, &dev_attr_clihost_read);
+//err_sys_create_clihost_read:
 	device_remove_file(dev, &dev_attr_clihost_free);
 err_sys_create_clihost_free:
 	device_remove_file(dev, &dev_attr_clihost_alloc);
@@ -621,6 +621,6 @@ void delete_sysfs_file(struct device *dev) {
 	device_remove_file(dev, &dev_attr_clihost_priblk);
 	device_remove_file(dev, &dev_attr_clihost_alloc);
 	device_remove_file(dev, &dev_attr_clihost_free);
-	device_remove_file(dev, &dev_attr_clihost_read);
-	device_remove_file(dev, &dev_attr_clihost_write);
+//	device_remove_file(dev, &dev_attr_clihost_read);
+//	device_remove_file(dev, &dev_attr_clihost_write);
 }

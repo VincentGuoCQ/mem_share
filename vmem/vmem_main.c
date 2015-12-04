@@ -12,7 +12,7 @@ struct vpage_read vpage_read;
 
 int vmem_open(struct inode *inode, struct file *filp) {
 	filp->private_data = Devices;
-	return 0;
+	return ERR_SUCCESS;
 }
 
 int vmem_release(struct inode *inode, struct file *filp) {
@@ -20,19 +20,144 @@ int vmem_release(struct inode *inode, struct file *filp) {
 }
 
 static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff_t *ppos) {
-	int ret = 0;
 	struct vmem_dev *dev =filp->private_data;
-	return ret;
+	unsigned int nBlkIndex = 0;
+	unsigned int nPageIndex = 0;
+
+	nBlkIndex = GET_BLK_INDEX(*ppos);
+	nPageIndex = GET_VPAGE_INDEX(*ppos);
+
+	printk(KERN_INFO"blk:%d,vpage:%d\n", nBlkIndex, nPageIndex);
+	if(nBlkIndex > BLK_NUM_MAX || nPageIndex > VPAGE_NUM_IN_BLK) {
+		printk(KERN_INFO"vmem:%s:illegal address\n", __FUNCTION__);
+		return ERR_VMEM_ARG_ILLEGAL;
+	}
+	if(count > VPAGE_SIZE) {
+		printk(KERN_INFO"vmem:%s:page size too large\n", __FUNCTION__);
+		return ERR_VMEM_ARG_ILLEGAL;
+	}
+	if(!dev->addr_entry[nBlkIndex].inuse) {
+		printk(KERN_INFO"vmem:%s:memory not mapped\n", __FUNCTION__);
+		return ERR_VMEM_NOT_MAPPED;
+	}
+	if(!dev->addr_entry[nBlkIndex].page_bitmap[nPageIndex]) {
+		printk(KERN_INFO"vmem:%s:page not used\n", __FUNCTION__);
+		return ERR_VMEM_PAGE_NOT_USED;
+	}
+	//vpage in native
+	if(dev->addr_entry[nBlkIndex].native) {
+		mutex_lock(&dev->addr_entry[nBlkIndex].handle_mutex);
+		mutex_lock(&dev->vpage_read->access_mutex);
+
+		copy_to_user(buf, 
+					dev->addr_entry[nBlkIndex].entry.native.addr + nPageIndex * VPAGE_SIZE,
+					count);
+
+		mutex_unlock(&dev->vpage_read->access_mutex);
+		mutex_unlock(&dev->addr_entry[nBlkIndex].handle_mutex);
+	}
+	//vpage in remote
+	else if(dev->addr_entry[nBlkIndex].remote){
+		struct netmsg_req * msg_req = NULL;
+		struct server_host *serhost = NULL;
+		serhost = dev->addr_entry[nBlkIndex].entry.vmem.serhost;
+		if(!serhost) {
+			goto err_null_ptr;
+		}
+		msg_req = (struct netmsg_req *)kmem_cache_alloc(serhost->slab_netmsg_req, GFP_USER);
+		memset((void *)msg_req, 0, sizeof(struct netmsg_req));
+
+		//post read msg to list
+		msg_req->msgID = NETMSG_CLI_REQUEST_READ;
+		//msg_req->info.req_write.vpageaddr = pmemwrite->vpageaddr;
+		msg_req->info.req_read.remoteIndex
+			= dev->addr_entry[nBlkIndex].entry.vmem.blk_remote_index;
+		msg_req->info.req_read.pageIndex = nPageIndex;
+		mutex_lock(&serhost->lshd_req_msg_mutex);
+		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
+		mutex_unlock(&serhost->lshd_req_msg_mutex);
+		printk(KERN_INFO"add read msg in inuse server\n");
+	}
+
+err_null_ptr:
+	return count;
 }
 
 static ssize_t vmem_write(struct file *filp, const char __user *buf, size_t count, loff_t *ppos) {
-	int ret = 0;
 	struct vmem_dev *dev =filp->private_data;
-	return ret;
+	unsigned int nBlkIndex = 0;
+	unsigned int nPageIndex = 0;
+
+	nBlkIndex = GET_BLK_INDEX(*ppos);
+	nPageIndex = GET_VPAGE_INDEX(*ppos);
+
+	printk(KERN_INFO"blk:%d,vpage:%d\n", nBlkIndex, nPageIndex);
+	if(nBlkIndex > BLK_NUM_MAX || nPageIndex > VPAGE_NUM_IN_BLK) {
+		printk(KERN_INFO"vmem:%s:illegal address\n", __FUNCTION__);
+		return ERR_VMEM_ARG_ILLEGAL;
+	}
+	if(count > VPAGE_SIZE) {
+		printk(KERN_INFO"vmem:%s:page size too large\n", __FUNCTION__);
+		return ERR_VMEM_ARG_ILLEGAL;
+	}
+
+	if(!dev->addr_entry[nBlkIndex].inuse) {
+		printk(KERN_INFO"vmem:%s:memory not mapped\n", __FUNCTION__);
+		return ERR_VMEM_NOT_MAPPED;
+	}
+	if(!dev->addr_entry[nBlkIndex].page_bitmap[nPageIndex]) {
+		printk(KERN_INFO"vmem:%s:page not used\n", __FUNCTION__);
+		return ERR_VMEM_PAGE_NOT_USED;
+	}
+	//vpage in native
+	if(dev->addr_entry[nBlkIndex].native) {
+		mutex_lock(&dev->addr_entry[nBlkIndex].handle_mutex);
+		mutex_lock(&dev->vpage_read->access_mutex);
+
+		copy_from_user(dev->addr_entry[nBlkIndex].entry.native.addr + nPageIndex * VPAGE_SIZE,
+					buf, count);
+
+		mutex_unlock(&dev->vpage_read->access_mutex);
+		mutex_unlock(&dev->addr_entry[nBlkIndex].handle_mutex);
+	}
+	//vpage in remote
+	else if(dev->addr_entry[nBlkIndex].remote){
+		struct netmsg_req * msg_req = NULL;
+		struct netmsg_data * msg_wrdata = NULL;
+		struct server_host *serhost = NULL;
+		serhost = dev->addr_entry[nBlkIndex].entry.vmem.serhost;
+		if(!serhost) {
+			goto err_null_ptr;
+		}
+		msg_req = (struct netmsg_req *)kmem_cache_alloc(serhost->slab_netmsg_req, GFP_USER);
+		msg_wrdata = (struct netmsg_data *)kmem_cache_alloc(serhost->slab_netmsg_data, GFP_USER);
+		memset((void *)msg_req, 0, sizeof(struct netmsg_req));
+		memset((void *)msg_wrdata, 0, sizeof(struct netmsg_data));
+
+		//post write msg to list
+		msg_req->msgID = NETMSG_CLI_REQUEST_WRITE;
+		//msg_req->info.req_write.vpageaddr = pmemwrite->vpageaddr;
+		msg_req->info.req_write.remoteIndex
+			= dev->addr_entry[nBlkIndex].entry.vmem.blk_remote_index;
+		msg_req->info.req_write.pageIndex = nPageIndex;
+		mutex_lock(&serhost->lshd_req_msg_mutex);
+		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
+		mutex_unlock(&serhost->lshd_req_msg_mutex);
+		printk(KERN_INFO"add write msg in inuse server\n");
+
+		//post data to list
+		copy_from_user(msg_wrdata->data, buf, count);
+		mutex_lock(&serhost->lshd_wrdata_mutex);
+		list_add_tail(&msg_wrdata->ls_req, &serhost->lshd_wrdata);
+		mutex_unlock(&serhost->lshd_wrdata_mutex);
+		printk(KERN_INFO"add write data in inuse server\n");
+	}
+err_null_ptr:
+	return count;
 }
 
 static loff_t vmem_llseek(struct file *filp, loff_t offset, int orig) {
-	loff_t ret = 0;
+	loff_t ret = ERR_SUCCESS;
 	return ret;
 }
 
