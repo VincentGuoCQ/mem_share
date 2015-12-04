@@ -16,47 +16,40 @@ struct mempool_dev *Devices = NULL;
 //	.netns_ok	= 1,
 //};
 
-static int mempool_open(struct block_device *bdev, fmode_t mode) {
+int mempool_open(struct inode *inode, struct file *filp) {
+	filp->private_data = Devices;
 	return 0;
 }
 
-static void mempool_release(struct gendisk *disk, fmode_t mode) {
-	return;
-}
-int mempool_media_changed(struct gendisk *gd) {
-	return 0;
-}
-int mempool_revalidate(struct gendisk *gd) {
-	return 0;
-}
-void mempool_invalidate(unsigned long ldev) {
-	return;
-}
-static int mempool_getgeo(struct block_device *bdev, struct hd_geometry *geo) {
+int mempool_release(struct inode *inode, struct file *filp) {
 	return 0;
 }
 
-static struct block_device_operations mempool_ops = {
+static ssize_t mempool_read(struct file *filp, char __user *buf, size_t count, loff_t *ppos) {
+	int ret = 0;
+	struct mempool_dev *dev =filp->private_data;
+	return ret;
+}
+
+static ssize_t mempool_write(struct file *filp, const char __user *buf, size_t count, loff_t *ppos) {
+	int ret = 0;
+	struct mempool_dev *dev =filp->private_data;
+	return ret;
+}
+
+static loff_t mempool_llseek(struct file *filp, loff_t offset, int orig) {
+	return 0;
+}
+
+static const struct file_operations mempool_fops = {
 	.owner = THIS_MODULE,
+	.llseek = mempool_llseek,
+	.read = mempool_read,
+	.write = mempool_write,
 	.open = mempool_open,
 	.release = mempool_release,
-	.media_changed = mempool_media_changed,
-	.revalidate_disk = mempool_revalidate,
-	.getgeo = mempool_getgeo,
 };
 
-//static void mempool_transfer(struct mempool_dev *dev, unsigned long sector, unsigned long nsect, char *buffer, int write) {
-//	return;
-//}
-//static int mempool_xfer_bio(struct mempool_dev *dev, struct bio *bio) {
-//	return 0;
-//}
-static void mempool_request(struct request_queue *q) {
-	return;
-}
-static void mempool_make_request(struct request_queue *q, struct bio *bio) {
-	return;
-}
 static void destory_device(struct mempool_dev *dev, int which) {
 	struct list_head *p = NULL, *next = NULL;
 	struct client_host *clihost = NULL;
@@ -65,8 +58,7 @@ static void destory_device(struct mempool_dev *dev, int which) {
 	if(!dev) {
 		return;
 	}
-	del_timer_sync(&dev->timer);
-	
+
 	//destory block
 	for(nIndex = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL; nIndex++) {
 		if(dev->blk[nIndex].avail) {
@@ -151,74 +143,40 @@ static void destory_device(struct mempool_dev *dev, int which) {
 		dev->ListenThread = NULL;
 	}
 	//delete sysfs file
-	delete_sysfs_file(disk_to_dev(dev->gd));
+	delete_sysfs_file(dev->dev);
 	printk(KERN_INFO"mempool:destory sys file\n");
-	//delete gendisk
-	if(dev->gd) {
-		del_gendisk(dev->gd);
-		put_disk(dev->gd);
-	}
+	//delete dev
+	cdev_del(&dev->gd);
+	//delete sysfs dir
+	device_destroy(dev->mempool_class, dev->devno);
+	class_destroy(dev->mempool_class);
 }
 
-static int setup_device(struct mempool_dev *dev, int which) {
+static int setup_device(struct mempool_dev *dev, dev_t devno) {
 	int ret = KERERR_SUCCESS;
 	int nIndex = 0;
+	int err;
+
 	memset(dev, 0, sizeof(struct mempool_dev));
 
+	dev->devno = devno;
+
 	INIT_LIST_HEAD(&dev->lshd_rent_client);
-
-	spin_lock_init(&dev->lock);
-
-	//timer init
-	init_timer(&dev->timer);
-	dev->timer.data = (unsigned long)dev;
-	dev->timer.function = mempool_invalidate;
-
-	//request queue init
-	switch(request_mode) {
-		case RM_NOQUEUE:
-			dev->queue = blk_alloc_queue(GFP_KERNEL);
-			if(dev->queue == NULL) {
-				ret = KERERR_ALLOC;
-				goto err_alloc;
-			}
-			blk_queue_make_request(dev->queue, mempool_make_request);
-			break;
-		default:
-			printk(KERN_NOTICE"mempool:Bad request mode %d, using sample\n", request_mode);
-		case RM_SIMPLE:
-			dev->queue = blk_init_queue(mempool_request, &dev->lock);
-			if(dev->queue == NULL) {
-				ret = KERERR_ALLOC;
-				goto err_alloc;
-			}
-			break;
+	//init dev
+	cdev_init(&dev->gd, &mempool_fops);
+	dev->gd.owner = THIS_MODULE;
+	err = cdev_add(&dev->gd, dev->devno, 1);
+	if(err) {
+		printk(KERN_NOTICE "Error %d adding mempool\n", err);
+		ret = KERERR_CREATE_DEVICE;
+		goto err_create_device;
 	}
-
-	blk_queue_logical_block_size(dev->queue, hardsect_size);
-	dev->queue->queuedata = dev;
-
-	//gendisk init		
-	dev->gd = alloc_disk(mempool_minor);
-	if(!dev->gd) {
-		printk(KERN_NOTICE"mempool:alloc_disk failure");
-		ret = KERERR_ALLOC;
-		goto err_alloc;
-	}
-
-	dev->gd->major = mempool_major;
-	dev->gd->first_minor = which*mempool_minor;
-	dev->gd->fops = &mempool_ops;
-	dev->gd->queue = dev->queue;
-	dev->gd->private_data = dev;
-
-	snprintf(dev->gd->disk_name, DISK_NAME_LEN, MEMPOOL_NAME);
-	set_capacity(dev->gd, 0);
-	add_disk(dev->gd);
-
+	//create sysfs dir
+	dev->mempool_class = class_create(THIS_MODULE, MEMPOOL_NAME);
+	dev->dev = device_create(dev->mempool_class, NULL, dev->devno, NULL, MEMPOOL_NAME);
 	//create sysfs file
-	ret = create_sysfs_file(disk_to_dev(dev->gd));
-	if(ret == ERR_VMEM_CREATE_FILE) {
+	ret = create_sysfs_file(dev->dev);
+	if(ret == ERR_MEMPOOL_CREATE_FILE) {
 		printk(KERN_NOTICE"mempool:create sysfs file fail\n");
 		ret = KERERR_CREATE_FILE;
 		goto err_sysfs_create;
@@ -276,24 +234,33 @@ err_netmsg_req_slab:
 	kmem_cache_destroy(dev->slab_client_host);
 err_clihost_slab:
 err_sysfs_create:
-err_alloc:
+err_create_device:
 	return ret;
 }
 
 static int __init mempool_init(void) {
 	int ret = KERERR_SUCCESS;
+	dev_t devno;
 	//register devices
-	mempool_major = register_blkdev(mempool_major, VMEM_NAME);
+	devno = MKDEV(mempool_major, 0);
+	if(mempool_major) {
+		ret = register_chrdev_region(devno, 1, MEMPOOL_NAME);
+	}
+	else {
+		ret = alloc_chrdev_region(&devno, 0, 1, MEMPOOL_NAME);
+		mempool_major = MAJOR(devno);
+		mempool_minor = MINOR(devno);
+	}
 	if(mempool_major <= 0) {
-		printk(KERN_INFO"mempool:%s: unable to get major number\n", VMEM_NAME);
+		printk(KERN_INFO"mempool:%s: unable to get major number\n", MEMPOOL_NAME);
 		return -EBUSY;
 	}
+
 	Devices = (struct mempool_dev *)kmalloc(ndevices * sizeof(struct mempool_dev), GFP_KERNEL);
 	if(Devices == NULL) {
 		goto err_kmalloc_dev;
 	}
-
-	ret = setup_device(Devices, 0);
+	ret = setup_device(Devices, devno);
 	if(ret < KERERR_SUCCESS) {
 		printk(KERN_INFO"mempool: create dev fail\n");
 		goto err_setup_dev;
@@ -303,13 +270,13 @@ static int __init mempool_init(void) {
 
 err_setup_dev:
 err_kmalloc_dev:
-	unregister_blkdev(mempool_major, VMEM_NAME);
+	unregister_chrdev_region(devno, 1);
 	return -ENOMEM;
 }
 
 static void mempool_exit(void) {
 	destory_device(Devices, 0);
-	unregister_blkdev(mempool_major, VMEM_NAME);
+	unregister_chrdev_region(MKDEV(mempool_major, 0), 1);
 	kfree(Devices);
 	printk(KERN_NOTICE"mempool:mempool_exit\n");
 }

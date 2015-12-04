@@ -4,8 +4,8 @@
 #define SYSFS_PATH_MAX 255
 
 #define SYSFS_MNT_PATH "/sys"
-#define SYSFS_BLKDEV_PATH "block"
-#define SYSFS_DEV_PATH "mempool"
+#define SYSFS_BLKDEV_PATH "devices/virtual"
+#define SYSFS_DEV_PATH "mempool/mempool"
 
 #define SYSFS_MEMPOOLCFG_PATH "serhost_cfg"
 

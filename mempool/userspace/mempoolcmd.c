@@ -82,13 +82,13 @@ int mempool_add_block(int argc, char *argv[]) {
 
 	if(NULL == blknum) {
 		PRINT_INFO("argument error: block number missing\n");
-		ret = ERR_CLI_ARG_MISSING;
+		ret = ERR_SER_ARG_MISSING;
 		goto err_args;
 	}
 	//copy to structure
 	if((pSer->info.addblk.block_num = atoi(blknum)) == 0) {
 		PRINT_INFO("argument error: block number illegal\n");
-		ret = ERR_CLI_ARG_ILLEGAL;
+		ret = ERR_SER_ARG_ILLEGAL;
 		goto err_args;
 	}
 	pSer->op = SERHOST_OP_ADD_BLK;
