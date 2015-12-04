@@ -1,5 +1,6 @@
 #include "../include.h"
 #include "../common.h"
+#include "../kererr.h"
 #include "vmem_common.h"
 #include "userspace/errors.h"
 #include "userspace/msgfmt.h"
@@ -542,61 +543,65 @@ err_null_ptr:
 static DEVICE_ATTR(clihost_write, S_IWUSR, NULL, clihost_write_store);
 
 int create_sysfs_file(struct device *dev) {
-	int ret = ERR_SUCCESS;
+	int ret = KERERR_SUCCESS;
 	
+	if(!dev) {
+		ret = KERERR_NULL_PTR;
+		goto err_null_ptr;
+	}
 	ret = device_create_file(dev, &dev_attr_clihost_priser);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_priser;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_op);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_op;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_priblk);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_priblk;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_alloc);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_alloc;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_free);
 	if (ret) {
 		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
+		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_free;
 	}
 
-	ret = device_create_file(dev, &dev_attr_clihost_read);
-	if (ret) {
-		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
-		goto err_sys_create_clihost_read;
-	}
-
-	ret = device_create_file(dev, &dev_attr_clihost_write);
-	if (ret) {
-		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-		ret = ERR_VMEM_CREATE_FILE;
-		goto err_sys_create_clihost_write;
-	}
+//	ret = device_create_file(dev, &dev_attr_clihost_read);
+//	if (ret) {
+//		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
+//		ret = KERERR_CREATE_FILE;
+//		goto err_sys_create_clihost_read;
+//	}
+//
+//	ret = device_create_file(dev, &dev_attr_clihost_write);
+//	if (ret) {
+//		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
+//		ret = KERERR_CREATE_FILE;
+//		goto err_sys_create_clihost_write;
+//	}
 
 	return ret;
-err_sys_create_clihost_write:
-	device_remove_file(dev, &dev_attr_clihost_read);
-err_sys_create_clihost_read:
+//err_sys_create_clihost_write:
+//	device_remove_file(dev, &dev_attr_clihost_read);
+//err_sys_create_clihost_read:
 	device_remove_file(dev, &dev_attr_clihost_free);
 err_sys_create_clihost_free:
 	device_remove_file(dev, &dev_attr_clihost_alloc);
@@ -607,6 +612,7 @@ err_sys_create_clihost_priblk:
 err_sys_create_clihost_op:
 	device_remove_file(dev, &dev_attr_clihost_priser);
 err_sys_create_clihost_priser:
+err_null_ptr:
 	return ret;
 }
 void delete_sysfs_file(struct device *dev) {
@@ -615,6 +621,6 @@ void delete_sysfs_file(struct device *dev) {
 	device_remove_file(dev, &dev_attr_clihost_priblk);
 	device_remove_file(dev, &dev_attr_clihost_alloc);
 	device_remove_file(dev, &dev_attr_clihost_free);
-	device_remove_file(dev, &dev_attr_clihost_read);
-	device_remove_file(dev, &dev_attr_clihost_write);
+//	device_remove_file(dev, &dev_attr_clihost_read);
+//	device_remove_file(dev, &dev_attr_clihost_write);
 }

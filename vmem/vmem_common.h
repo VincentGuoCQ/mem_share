@@ -2,7 +2,7 @@
 #define VMEM_COMMON_H
 
 static int vmem_major = 0;
-static int vmem_minor= 1;
+static int vmem_minor= 0;
 
 module_param(vmem_major, int, 0);
 module_param(vmem_minor, int, 0);
@@ -94,13 +94,12 @@ struct vpage_read {
 };
 struct vmem_dev {
 	struct request_queue *queue;
-	struct gendisk *gd;
-	struct timer_list timer;
-	spinlock_t lock;
+	struct cdev gd;
+	struct class *vmem_class;
+	struct device *dev;
+	dev_t devno;
 	int user;
 	unsigned int size;
-	char * data;
-	int media_change;
 
 	struct list_head lshd_available;
 	struct mutex lshd_avail_mutex;

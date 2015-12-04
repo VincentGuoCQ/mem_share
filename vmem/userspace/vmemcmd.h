@@ -111,18 +111,18 @@ static const struct command cmds[] = {
 		.help  = NULL,
 		.usage = NULL,
 	},
-	{
-		.name  = "writepage",
-		.fn	   = vmem_write_page,
-		.help  = NULL,
-		.usage = NULL,
-	},
-	{
-		.name  = "readpage",
-		.fn	   = vmem_read_page,
-		.help  = NULL,
-		.usage = NULL,
-	},
+//	{
+//		.name  = "writepage",
+//		.fn	   = vmem_write_page,
+//		.help  = NULL,
+//		.usage = NULL,
+//	},
+//	{
+//		.name  = "readpage",
+//		.fn	   = vmem_read_page,
+//		.help  = NULL,
+//		.usage = NULL,
+//	},
 	{NULL, NULL, NULL, NULL}
 };
 
