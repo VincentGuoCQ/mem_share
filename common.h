@@ -25,7 +25,7 @@
 
 #define SERHOST_LISTEN_PORT	8000
 
-#define SCHEDULE_TIME	0.5
+#define SCHEDULE_TIME	0.1
 
 #define TRUE	1
 #define FALSE	0

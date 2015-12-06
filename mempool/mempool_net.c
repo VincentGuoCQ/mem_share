@@ -97,7 +97,7 @@ static int CliRecvThread(void *data) {
 		}
 		mutex_lock(&clihost->lshd_req_msg_mutex);
 		list_add_tail(&msg_req->ls_reqmsg, &clihost->lshd_req_msg);
-        printk(KERN_ALERT"mempool thread: add netmsg to list!\n");
+        //printk(KERN_ALERT"mempool thread: add netmsg to list!\n");
 		mutex_unlock(&clihost->lshd_req_msg_mutex);
 		msg_req = (struct netmsg_req *)kmem_cache_alloc(clihost->slab_netmsg_req, GFP_USER);
 
@@ -125,6 +125,7 @@ static int CliSendThread(void *data) {
 	struct list_head * ls_req = NULL, *next = NULL;
 	struct netmsg_req *msg_req = NULL;
 	struct netmsg_rpy *msg_rpy = (struct netmsg_rpy *)kmalloc(sizeof(struct netmsg_rpy), GFP_USER);
+	struct netmsg_data *msg_rddata = (struct netmsg_data *)kmem_cache_alloc(clihost->slab_netmsg_data, GFP_USER);
     int len = 0;
 	if(!Devices) {
 		goto err_device_ptr;
@@ -148,15 +149,16 @@ static int CliSendThread(void *data) {
 			continue;
 		}
 		list_for_each_safe(ls_req, next, &clihost->lshd_req_msg) {
-			schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 			msg_req = list_entry(ls_req, struct netmsg_req, ls_reqmsg);
 			list_del(&msg_req->ls_reqmsg);
-			printk(KERN_INFO"mempool CliRecvThread: req msg  delete from list\n");
+			//printk(KERN_INFO"mempool CliRecvThread: req msg  delete from list\n");
 			break;
 		}
 		mutex_unlock(&clihost->lshd_req_msg_mutex);
 
 		memset(msg_rpy, 0, sizeof(struct netmsg_rpy));
+		memset(msg_rddata, 0, sizeof(struct netmsg_data));
+		
 		switch(msg_req->msgID) {
 			//alloc block
 			case NETMSG_CLI_REQUEST_ALLOC_BLK: {
@@ -178,7 +180,7 @@ static int CliSendThread(void *data) {
 				msg_rpy->info.rpyblk.blk_rest_available = 0;
 				mutex_unlock(&Devices->blk_mutex);
 
-				printk(KERN_INFO"mempool thread: send alloc blk reply\n");
+				//printk(KERN_INFO"mempool thread: send alloc blk reply\n");
 		
 				break;
 			}
@@ -195,7 +197,7 @@ static int CliSendThread(void *data) {
 				list_for_each_safe(pd, dnext, &clihost->lshd_wrdata) {
 					msg_wrdata = list_entry(pd, struct netmsg_data, ls_req);
 					list_del(&msg_wrdata->ls_req);
-					printk(KERN_INFO"mempool CliSendThread: write data delete from list\n");
+					//printk(KERN_INFO"mempool CliSendThread: write data delete from list\n");
 					break;
 				}
 				mutex_unlock(&clihost->lshd_wrdata_mutex);
@@ -203,12 +205,29 @@ static int CliSendThread(void *data) {
 				nBlkIndex = msg_req->info.req_write.remoteIndex;
 				nPageIndex = msg_req->info.req_write.pageIndex;
 
-				printk(KERN_INFO"mempool CliSendThread: nBlkIndex %d, nPageIndex %d\n", nBlkIndex, nPageIndex);
-				printk(KERN_INFO"mempool CliSendThread: data %s\n", msg_wrdata->data);
+				//printk(KERN_INFO"mempool CliSendThread: nBlkIndex %d, nPageIndex %d\n", nBlkIndex, nPageIndex);
+				//printk(KERN_INFO"mempool CliSendThread: data %s\n", msg_wrdata->data);
 				mutex_lock(&Devices->blk_mutex);
 				memcpy(Devices->blk[nBlkIndex].blk_addr + nPageIndex * VPAGE_SIZE,
 							msg_wrdata->data, VPAGE_SIZE);
 				mutex_unlock(&Devices->blk_mutex);
+				kmem_cache_free(clihost->slab_netmsg_data, msg_wrdata);
+
+				msg_rpy->msgID = NETMSG_SER_REPLY_WRITE;
+				break;
+			}
+			//read data
+			case NETMSG_CLI_REQUEST_READ: {
+				unsigned int nBlkIndex = 0, nPageIndex = 0;
+
+				msg_rpy->msgID = NETMSG_SER_REPLY_READ;
+				msg_rpy->info.rpy_read.vpageaddr = msg_req->info.req_read.vpageaddr;
+
+				nBlkIndex = msg_req->info.req_write.remoteIndex;
+				nPageIndex = msg_req->info.req_write.pageIndex;
+
+				memcpy(msg_rddata->data, Devices->blk[nBlkIndex].blk_addr + nPageIndex * VPAGE_SIZE,
+							VPAGE_SIZE);
 				break;
 			}
 			default:
@@ -220,19 +239,33 @@ static int CliSendThread(void *data) {
 		len = kernel_sendmsg(clihost->sock, &msg, &iov, 1, sizeof(struct netmsg_rpy));
 
 		if(len != sizeof(struct netmsg_rpy)) {
-			printk(KERN_INFO"kernel_sendmsg err, len=%d, buffer=%ld\n",
-						len, sizeof(struct netmsg_rpy));
+			//printk(KERN_INFO"kernel_sendmsg err, len=%d, buffer=%ld\n",
+			//			len, sizeof(struct netmsg_rpy));
 			if(len == -ECONNREFUSED) {
 				printk(KERN_INFO"Receive Port Unreachable packet!\n");
 			}
 			//continue;
 		}
 
+		if(NETMSG_CLI_REQUEST_READ == msg_req->msgID) {
+			iov.iov_base = (void *)msg_rddata;
+			iov.iov_len = sizeof(struct netmsg_data);
+
+			len = kernel_sendmsg(clihost->sock, &msg, &iov, 1, sizeof(struct netmsg_data));
+			if (len < 0 || len != sizeof(struct netmsg_data)) {
+				//printk(KERN_ALERT"mempool handlethread: kernel_recvmsg err, len=%d, buffer=%ld\n",
+				//        len, sizeof(struct netmsg_req));
+			    if (len == -ECONNREFUSED) {
+					printk(KERN_ALERT"mempool thread: Receive Port Unreachable packet!\n");
+				}
+			}
+		}
 		kmem_cache_free(clihost->slab_netmsg_req, msg_req);
-		printk(KERN_INFO"mempool CliRecvThread: free from slab\n");
+		//printk(KERN_INFO"mempool CliRecvThread: free from slab\n");
 	}
 err_device_ptr:
 	kfree(msg_rpy);
+	kmem_cache_free(clihost->slab_netmsg_data, msg_rddata);
 	while(!kthread_should_stop()) {
 		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 	}
