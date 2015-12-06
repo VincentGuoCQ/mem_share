@@ -52,6 +52,7 @@ static int SerRecvThread(void *data) {
     struct server_host *serhost = (struct server_host *)data;
 	struct msghdr msg;
 	struct netmsg_rpy *msg_rpy = (struct netmsg_rpy *)kmalloc(sizeof(struct netmsg_rpy), GFP_USER);
+	struct netmsg_data *msg_rddata = (struct netmsg_data *)kmem_cache_alloc(serhost->slab_netmsg_data, GFP_USER);
 	int len = 0;
 	if(!Devices) {
 		goto err_device_ptr;
@@ -109,13 +110,31 @@ static int SerRecvThread(void *data) {
 				serhost->block_available = msg_rpy->info.rpyblk.blk_rest_available;
 				break;
 			}
+			//read page
 			case NETMSG_SER_REPLY_READ: {
+				memset(msg_rddata, 0, sizeof(struct netmsg_data));
+				iov.iov_base = (void *)msg_rddata;
+				iov.iov_len = sizeof(struct netmsg_data);
+
+				len = kernel_recvmsg(serhost->sock, &msg, &iov, 1,
+							sizeof(struct netmsg_data), MSG_DONTWAIT);
+				if(len == 0) {
+					break;
+				}
+				if(len < 0 || len != sizeof(struct netmsg_rpy)) {
+					if(len == -ECONNREFUSED) {
+						printk(KERN_INFO"vmem thread: recvice err");
+					}
+					continue;
+				}
+				printk(KERN_INFO"vmem thread: recvice read data len:%d", len);
 				break;
 			}
 		}
 	}
 err_device_ptr:
 	kfree(msg_rpy);
+	kmem_cache_free(serhost->slab_netmsg_data, msg_rddata);
 	while(!kthread_should_stop()) {
 		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 	}
