@@ -52,7 +52,7 @@ static int SerRecvThread(void *data) {
     struct server_host *serhost = (struct server_host *)data;
 	struct msghdr msg;
 	struct netmsg_rpy *msg_rpy = (struct netmsg_rpy *)kmalloc(sizeof(struct netmsg_rpy), GFP_USER);
-	struct netmsg_data *msg_rddata = (struct netmsg_data *)kmem_cache_alloc(serhost->slab_netmsg_data, GFP_USER);
+	struct netmsg_data *msg_rddata = NULL;
 	int len = 0;
 	if(!Devices) {
 		goto err_device_ptr;
@@ -90,7 +90,7 @@ static int SerRecvThread(void *data) {
 			//alloc block
 			case NETMSG_SER_REPLY_ALLOC_BLK:{
 				unsigned int  nIndex = 0, count = 0;
-				printk(KERN_INFO"vmem thread: recvice rpy: blk");
+				printk(KERN_INFO"vmem thread: recvice rpy: alloc blk");
 				for(nIndex = 0, count = 0; nIndex < BLK_NUM_MAX &&
 							count < msg_rpy->info.rpyblk.blk_alloc; nIndex++) {
 					if(FALSE == Devices->addr_entry[nIndex].inuse) {
@@ -112,6 +112,7 @@ static int SerRecvThread(void *data) {
 			}
 			//read page
 			case NETMSG_SER_REPLY_READ: {
+				msg_rddata = (struct netmsg_data *)kmem_cache_alloc(serhost->slab_netmsg_data, GFP_USER);
 				memset(msg_rddata, 0, sizeof(struct netmsg_data));
 				iov.iov_base = (void *)msg_rddata;
 				iov.iov_len = sizeof(struct netmsg_data);
@@ -121,13 +122,17 @@ static int SerRecvThread(void *data) {
 				if(len == 0) {
 					break;
 				}
-				if(len < 0 || len != sizeof(struct netmsg_rpy)) {
+				if(len < 0 || len != sizeof(struct netmsg_data)) {
 					if(len == -ECONNREFUSED) {
 						printk(KERN_INFO"vmem thread: recvice err");
 					}
 					continue;
 				}
+				msg_rddata->vpageaddr = msg_rpy->info.rpy_read.vpageaddr;
 				printk(KERN_INFO"vmem thread: recvice read data len:%d", len);
+				mutex_lock(&Devices->lshd_read_mutex);
+				list_add_tail(&msg_rddata->ls_req, &Devices->lshd_read);
+				mutex_unlock(&Devices->lshd_read_mutex);
 				break;
 			}
 		}

@@ -105,6 +105,8 @@ struct vmem_dev {
 	struct mutex lshd_avail_mutex;
 	struct list_head lshd_inuse;
 	struct mutex lshd_inuse_mutex;
+	struct list_head lshd_read;
+	struct mutex lshd_read_mutex;
 
 	struct kmem_cache * slab_server_host;
 	struct cli_blk * addr_entry;

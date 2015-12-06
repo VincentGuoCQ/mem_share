@@ -8,7 +8,7 @@
 struct vmem_dev *Devices = NULL;
 struct cli_blk blktable[BLK_NUM_MAX];
 struct vpage_alloc vpage_alloc;
-struct vpage_read vpage_read;
+//struct vpage_read vpage_read;
 
 int vmem_open(struct inode *inode, struct file *filp) {
 	filp->private_data = Devices;
@@ -60,6 +60,8 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 	else if(dev->addr_entry[nBlkIndex].remote){
 		struct netmsg_req * msg_req = NULL;
 		struct server_host *serhost = NULL;
+		struct list_head *p = NULL, *next = NULL;
+		struct netmsg_data *msg_rddata = NULL;
 		serhost = dev->addr_entry[nBlkIndex].entry.vmem.serhost;
 		if(!serhost) {
 			goto err_null_ptr;
@@ -69,7 +71,7 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 
 		//post read msg to list
 		msg_req->msgID = NETMSG_CLI_REQUEST_READ;
-		//msg_req->info.req_write.vpageaddr = pmemwrite->vpageaddr;
+		msg_req->info.req_write.vpageaddr = (unsigned long)*ppos;
 		msg_req->info.req_read.remoteIndex
 			= dev->addr_entry[nBlkIndex].entry.vmem.blk_remote_index;
 		msg_req->info.req_read.pageIndex = nPageIndex;
@@ -77,6 +79,22 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
 		printk(KERN_INFO"add read msg in inuse server\n");
+		while(1) {
+			schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
+			mutex_lock(&Devices->lshd_read_mutex);
+			list_for_each_safe(p, next, &Devices->lshd_read) {
+				msg_rddata = list_entry(p, struct netmsg_data, ls_req); 
+				if(msg_rddata->vpageaddr == *ppos) {
+					copy_to_user(buf, msg_rddata->data, count);
+					list_del(p);
+					kmem_cache_free(Devices->slab_netmsg_data, msg_rddata);
+					mutex_unlock(&Devices->lshd_read_mutex);
+					return count;
+				}
+			}
+			mutex_unlock(&Devices->lshd_read_mutex);
+		}
+
 	}
 
 err_null_ptr:
@@ -269,6 +287,7 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	//init list head
 	INIT_LIST_HEAD(&dev->lshd_available);
 	INIT_LIST_HEAD(&dev->lshd_inuse);
+	INIT_LIST_HEAD(&dev->lshd_read);
 
 	dev->devno = devno;
 	//init dev	
@@ -312,6 +331,7 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	//init mutex
 	mutex_init(&dev->lshd_avail_mutex);
 	mutex_init(&dev->lshd_inuse_mutex);
+	mutex_init(&dev->lshd_read_mutex);
 	printk(KERN_NOTICE"vmem:vmem_create\n");
 
 	//init block table
@@ -326,9 +346,9 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	mutex_init(&vpage_alloc.access_mutex);
 	dev->vpage_alloc = &vpage_alloc;
 	//init vpage read
-	memset(&vpage_read, 0 ,sizeof(struct vpage_read));
-	mutex_init(&vpage_read.access_mutex);
-	dev->vpage_read = &vpage_read;
+//	memset(&vpage_read, 0 ,sizeof(struct vpage_read));
+//	mutex_init(&vpage_read.access_mutex);
+//	dev->vpage_read = &vpage_read;
 	//init daemon thread
 	dev->DaemonThread = kthread_create(vmem_daemon, (void *)dev, "vmem daemon");
 	wake_up_process(dev->DaemonThread);
