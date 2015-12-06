@@ -222,6 +222,8 @@ static int CliSendThread(void *data) {
 
 				msg_rpy->msgID = NETMSG_SER_REPLY_READ;
 				msg_rpy->info.rpy_read.vpageaddr = msg_req->info.req_read.vpageaddr;
+				msg_rpy->info.rpy_read.remoteIndex = msg_req->info.req_read.remoteIndex;
+				msg_rpy->info.rpy_read.pageIndex = msg_req->info.req_read.pageIndex;
 
 				nBlkIndex = msg_req->info.req_write.remoteIndex;
 				nPageIndex = msg_req->info.req_write.pageIndex;

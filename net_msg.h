@@ -72,6 +72,7 @@ struct netmsg_rpy {
 
 struct netmsg_data {
 	struct list_head ls_req;
+	unsigned long vpageaddr;
 	char data[VPAGE_SIZE];
 };
 #endif //NET_MSG_H
