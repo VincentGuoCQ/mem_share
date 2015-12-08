@@ -7,7 +7,7 @@
 
 extern struct vmem_dev *Devices;
 
-static int bind_to_device(struct socket *sock, char *ifname, struct server_host *serhost) {
+static int bind_to_device(struct socket *sock, char *ifname) {
     struct net *net;
     struct net_device *dev;
     __be32 addr;
@@ -18,8 +18,8 @@ static int bind_to_device(struct socket *sock, char *ifname, struct server_host 
     dev = __dev_get_by_name(net, ifname);
 
     if (!dev) {
-        printk(KERN_ALERT "No such device named %s\n", ifname);
-        return -ENODEV;    
+        KER_DEBUG(KERN_ALERT "No such device named %s\n", ifname);
+        return -ENODEV;
     }
     addr = inet_select_addr(dev, 0, RT_SCOPE_UNIVERSE);
     sin.sin_family = AF_INET;
@@ -27,21 +27,21 @@ static int bind_to_device(struct socket *sock, char *ifname, struct server_host 
     sin.sin_port = 0;
     ret = sock->ops->bind(sock, (struct sockaddr*)&sin, sizeof(sin));
     if (ret < 0) {
-        printk(KERN_ALERT "sock bind err, err=%d\n", ret);
+        KER_DEBUG(KERN_ALERT "sock bind err, err=%d\n", ret);
         return ret;
     }
     return 0;
 }
 
-static int connect_to_addr(struct socket *sock, struct server_host *serhost) {
+static int connect_to_addr(struct socket *sock, struct server_host *serhost, unsigned short port) {
     int ret = KERERR_SUCCESS;
     serhost->host_addr.sin_family = AF_INET;
     //serhost->host_addr.sin_addr.s_addr = cpu_to_be32(dstip);
-    serhost->host_addr.sin_port = cpu_to_be16(SERHOST_LISTEN_PORT);
+    serhost->host_addr.sin_port = cpu_to_be16(port);
     ret = sock->ops->connect(sock, (struct sockaddr*)&serhost->host_addr,
             sizeof(struct sockaddr), 0);
     if (ret < 0) {
-        printk(KERN_ALERT "sock connect err, err=%d\n", ret);
+        KER_DEBUG(KERN_ALERT "sock connect err, err=%d\n", ret);
         return ret;
     }
     return ret;
@@ -81,16 +81,16 @@ static int SerRecvThread(void *data) {
 		}
 		if(len < 0 || len != sizeof(struct netmsg_rpy)) {
 			if(len == -ECONNREFUSED) {
-				printk(KERN_INFO"vmem thread: recvice err");
+				KER_DEBUG(KERN_INFO"vmem thread: recvice err");
 			}
 			continue;
 		}
-		printk(KERN_INFO"vmem thread: recvice netmsg_rpy:%d", msg_rpy->msgID);
+		KER_DEBUG(KERN_INFO"vmem thread: recvice netmsg_rpy:%d", msg_rpy->msgID);
 		switch(msg_rpy->msgID) {
 			//alloc block
 			case NETMSG_SER_REPLY_ALLOC_BLK:{
 				unsigned int  nIndex = 0, count = 0;
-				printk(KERN_INFO"vmem thread: recvice rpy: alloc blk");
+				KER_DEBUG(KERN_INFO"vmem thread: recvice rpy: alloc blk");
 				for(nIndex = 0, count = 0; nIndex < BLK_NUM_MAX &&
 							count < msg_rpy->info.rpyblk.blk_alloc; nIndex++) {
 					if(FALSE == Devices->addr_entry[nIndex].inuse) {
@@ -117,19 +117,19 @@ static int SerRecvThread(void *data) {
 				iov.iov_base = (void *)msg_rddata;
 				iov.iov_len = sizeof(struct netmsg_data);
 
-				len = kernel_recvmsg(serhost->sock, &msg, &iov, 1,
+				len = kernel_recvmsg(serhost->datasock, &msg, &iov, 1,
 							sizeof(struct netmsg_data), MSG_DONTWAIT);
 				if(len == 0) {
 					break;
 				}
 				if(len < 0 || len != sizeof(struct netmsg_data)) {
 					if(len == -ECONNREFUSED) {
-						printk(KERN_INFO"vmem thread: recvice err");
+						KER_DEBUG(KERN_INFO"vmem thread: recvice err");
 					}
 					continue;
 				}
 				msg_rddata->vpageaddr = msg_rpy->info.rpy_read.vpageaddr;
-				printk(KERN_INFO"vmem thread: recvice read data len:%d", len);
+				KER_DEBUG(KERN_INFO"vmem thread: recvice read data len:%d", len);
 				mutex_lock(&Devices->lshd_read_mutex);
 				list_add_tail(&msg_rddata->ls_req, &Devices->lshd_read);
 				mutex_unlock(&Devices->lshd_read_mutex);
@@ -139,7 +139,6 @@ static int SerRecvThread(void *data) {
 	}
 err_device_ptr:
 	kfree(msg_rpy);
-	kmem_cache_free(serhost->slab_netmsg_data, msg_rddata);
 	while(!kthread_should_stop()) {
 		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 	}
@@ -184,14 +183,14 @@ static int SerSendThread(void *data) {
         iov.iov_len = sizeof(struct netmsg_req);
         len = kernel_sendmsg(serhost->sock, &msg, &iov, 1, sizeof(struct netmsg_req));
         if (len != sizeof(struct netmsg_req)) {
-            printk(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%ld\n",
+            KER_DEBUG(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%ld\n",
                     len, sizeof(struct netmsg_req));
             if (len == -ECONNREFUSED) {
-                printk(KERN_ALERT "Receive Port Unreachable packet!\n");
+                KER_DEBUG(KERN_ALERT "Receive Port Unreachable packet!\n");
             }
             //break;
         }
-        printk(KERN_ALERT "kernel_sendmsg: len=%d\n", len);
+        KER_DEBUG(KERN_ALERT "kernel_sendmsg: len=%d\n", len);
 		//if request is write
 		if(msg_req->msgID == NETMSG_CLI_REQUEST_WRITE) {
 			msg_wrdata = NULL;
@@ -204,12 +203,12 @@ static int SerSendThread(void *data) {
 			if(msg_wrdata) {
 				iov.iov_base = (void *)msg_wrdata;
 				iov.iov_len = sizeof(struct netmsg_data);
-				len = kernel_sendmsg(serhost->sock, &msg, &iov, 1, sizeof(struct netmsg_data));
+				len = kernel_sendmsg(serhost->datasock, &msg, &iov, 1, sizeof(struct netmsg_data));
 				if (len != sizeof(struct netmsg_data)) {
-					printk(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%ld\n",
+					KER_DEBUG(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%ld\n",
 								len, sizeof(struct netmsg_data));
 					if (len == -ECONNREFUSED) {
-						printk(KERN_ALERT "Receive Port Unreachable packet!\n");
+						KER_DEBUG(KERN_ALERT "Receive Port Unreachable packet!\n");
 					}
 				}
 			}
@@ -224,12 +223,8 @@ static int SerSendThread(void *data) {
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
 		kmem_cache_free(serhost->slab_netmsg_req, msg_req);
 
-        printk(KERN_ALERT "kernel_sendmsg: len=%d\n", len);
+        KER_DEBUG(KERN_ALERT "kernel_sendmsg: len=%d\n", len);
     }
-//	if(serhost->sock) {
-//		sock_release(serhost->sock);
-//		serhost->sock = NULL;
-//	}
 	while(!kthread_should_stop()) {
 		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 	}
@@ -242,37 +237,48 @@ int vmem_net_init(struct server_host *serhost) {
 
     ret = sock_create_kern(PF_INET, SOCK_STREAM, IPPROTO_TCP, &(serhost->sock));
     if (ret < KERERR_SUCCESS) {
-        printk(KERN_ALERT "TCP create sock err, err=%d\n", ret);
+        KER_DEBUG(KERN_ALERT "TCP create sock err, err=%d\n", ret);
 		ret = KERERR_CREATE_SOCKET;
         goto create_error;
     }
     serhost->sock->sk->sk_reuse = 1;
-
-    ret = bind_to_device(serhost->sock, VMEM_IF_NAME, serhost);
-
+    ret = sock_create_kern(PF_INET, SOCK_STREAM, IPPROTO_TCP, &(serhost->datasock));
     if (ret < KERERR_SUCCESS) {
-        printk(KERN_ALERT "Bind to %s err, err=%d\n", VMEM_IF_NAME, ret);
+        KER_DEBUG(KERN_ALERT "TCP create sock err, err=%d\n", ret);
+		ret = KERERR_CREATE_SOCKET;
+        goto create_data_error;
+    }
+    serhost->sock->sk->sk_reuse = 1;
+
+    ret = bind_to_device(serhost->sock, VMEM_IF_NAME);
+    if (ret < KERERR_SUCCESS) {
+        KER_DEBUG(KERN_ALERT "Bind to %s err, err=%d\n", VMEM_IF_NAME, ret);
 		ret = KERERR_SOCKET_BIND; 
         goto bind_error;
-    }    
-    ret = connect_to_addr(serhost->sock, serhost);
+    }
+    ret = bind_to_device(serhost->datasock, VMEM_IF_NAME);
     if (ret < KERERR_SUCCESS) {
-        printk(KERN_ALERT "sock connect err, err=%d\n", ret);
+        KER_DEBUG(KERN_ALERT "Bind to %s err, err=%d\n", VMEM_IF_NAME, ret);
+		ret = KERERR_SOCKET_BIND; 
+        goto bind_data_error;
+    }
+
+    ret = connect_to_addr(serhost->sock, serhost, SERHOST_LISTEN_PORT);
+    if (ret < KERERR_SUCCESS) {
+        KER_DEBUG(KERN_ALERT "sock connect err, err=%d\n", ret);
 		ret = KERERR_SOCKET_CONNECT;
         goto connect_error;
     }
-	serhost->host_addr.sin_family = AF_INET;
-	serhost->host_addr.sin_port = cpu_to_be16(SERHOST_LISTEN_PORT);
-	ret = kernel_connect(serhost->sock, (struct sockaddr *)&serhost->host_addr, sizeof(struct sockaddr), 0);
-	if(ret < KERERR_SUCCESS) {
-        printk(KERN_ALERT "sock connect server err, err=%d\n", ret);
-        //goto connect_error;
-	}
-	ret = KERERR_SUCCESS;
+    ret = connect_to_addr(serhost->datasock, serhost, DATA_PORT);
+    if (ret < KERERR_SUCCESS) {
+        KER_DEBUG(KERN_ALERT "sock connect err, err=%d\n", ret);
+		ret = KERERR_SOCKET_CONNECT;
+        goto connect_error;
+    }
 	//create server send thread
 	serhost->SerSendThread = kthread_run(SerSendThread, (void *)serhost, "Server Send thread");
     if (IS_ERR(serhost->SerSendThread)) {
-        printk(KERN_ALERT "create sendmsg thread err, err=%ld\n",
+        KER_DEBUG(KERN_ALERT "create sendmsg thread err, err=%ld\n",
                 PTR_ERR(serhost->SerSendThread));
 		ret = KERERR_CREATE_THREAD;
         goto thread_error;
@@ -280,7 +286,7 @@ int vmem_net_init(struct server_host *serhost) {
 	//create server recv thread
 	serhost->SerRecvThread = kthread_run(SerRecvThread, (void *)serhost, "Server Recv thread");
     if (IS_ERR(serhost->SerRecvThread)) {
-        printk(KERN_ALERT "create recvmsg thread err, err=%ld\n",
+        KER_DEBUG(KERN_ALERT "create recvmsg thread err, err=%ld\n",
                 PTR_ERR(serhost->SerRecvThread));
 		ret = KERERR_CREATE_THREAD;
         goto thread_error;
@@ -289,7 +295,13 @@ int vmem_net_init(struct server_host *serhost) {
 
 thread_error:
 connect_error:
+bind_data_error:
 bind_error:
+	if(serhost->datasock) {
+		sock_release(serhost->datasock);
+		serhost->sock = NULL;
+	}
+create_data_error:
 	if(serhost->sock) {
 		sock_release(serhost->sock);
 		serhost->sock = NULL;
@@ -310,12 +322,12 @@ int vmem_daemon(void *data) {
 				sumpage += pdev->addr_entry[nIndex].inuse_page;
 			}
 		}
-		printk(KERN_INFO"sumpage=%d, sumblk=%d\n", sumpage, sumblk);
+		KER_DEBUG(KERN_INFO"sumpage=%d, sumblk=%d\n", sumpage, sumblk);
 		//memory over upper limit
 		if(sumpage >= (unsigned int)(3 * ((sumblk * VPAGE_NUM_IN_BLK) >> 2))) {
 			struct list_head *p = NULL, *next = NULL;
 			struct server_host *serhost = NULL; 
-			printk(KERN_INFO"over upper limit\n");
+			KER_DEBUG(KERN_INFO"over upper limit\n");
 			//find a available existing server
 			mutex_lock(&Devices->lshd_inuse_mutex);
 			list_for_each(p, &Devices->lshd_inuse) {
@@ -331,7 +343,7 @@ int vmem_daemon(void *data) {
 			//find one
 			if(serhost) {
 				struct netmsg_req * msg_req = NULL;
-				printk(KERN_INFO"find a inuse server\n");
+				KER_DEBUG(KERN_INFO"find a inuse server\n");
 				//find a available existing server
 				msg_req = (struct netmsg_req *)kmem_cache_alloc(serhost->slab_netmsg_req, GFP_USER);
 				memset((void *)msg_req, 0, sizeof(struct netmsg_req));
@@ -339,7 +351,7 @@ int vmem_daemon(void *data) {
 				msg_req->info.req_alloc_blk.blknum = 1;
 				mutex_lock(&serhost->lshd_req_msg_mutex);
 				list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
-				printk(KERN_INFO"add msg in inuse server\n");
+				KER_DEBUG(KERN_INFO"add msg in inuse server\n");
 				mutex_unlock(&serhost->lshd_req_msg_mutex);
 				continue;
 			}
@@ -365,7 +377,7 @@ int vmem_daemon(void *data) {
 				mutex_lock(&Devices->lshd_inuse_mutex);
 				list_add_tail(&serhost->ls_inuse, &Devices->lshd_inuse);
 				mutex_unlock(&Devices->lshd_inuse_mutex);
-				printk(KERN_INFO"add server to inuse list\n");
+				KER_DEBUG(KERN_INFO"add server to inuse list\n");
 			}
 			//if tcp to server not established, delete server
 			else {
@@ -375,7 +387,7 @@ int vmem_daemon(void *data) {
 		}
 		//memory below lower limit
 		if(sumpage <= (unsigned int)(((sumblk * VPAGE_NUM_IN_BLK) >> 2))) {
-			printk(KERN_INFO"over lower limit");
+			KER_DEBUG(KERN_INFO"over lower limit");
 			continue;
 		}
 	}
