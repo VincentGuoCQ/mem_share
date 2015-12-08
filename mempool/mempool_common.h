@@ -1,6 +1,6 @@
 #ifndef	MEMPOOL_COMMON_H
 #define MEMPOOL_COMMON_H
-#define DEBUG
+//#define DEBUG
 
 #ifdef DEBUG
 #define KER_DEBUG(STR, args...)	printk(STR, ##args)
@@ -43,6 +43,7 @@ struct client_host {
 	struct list_head ls_rent;
 	char host_name[HOST_NAME_LEN];
 	struct sockaddr_in host_addr;
+	struct sockaddr_in host_data_addr;
 	unsigned int block_num; 
 	unsigned int state;
 	struct socket *sock;

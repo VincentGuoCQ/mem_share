@@ -33,17 +33,12 @@ static int bind_to_device(struct socket *sock, char *ifname, unsigned short port
 static int CliRecvThread(void *data) {
     struct kvec iov;
     struct client_host *clihost = (struct client_host *)data;
-    struct msghdr msg;
+    struct msghdr recvmsg, sendmsg, senddatamsg, recvdatamsg;
 	struct netmsg_req *msg_req = (struct netmsg_req *)kmalloc(sizeof(struct netmsg_req), GFP_USER);
 	struct netmsg_data *msg_wrdata = (struct netmsg_data *)kmalloc(sizeof(struct netmsg_data), GFP_USER);
 	struct netmsg_rpy *msg_rpy = (struct netmsg_rpy *)kmalloc(sizeof(struct netmsg_rpy), GFP_USER);
 	struct netmsg_data *msg_rddata = (struct netmsg_data *)kmalloc(sizeof(struct netmsg_data), GFP_USER);
     int len = 0;
-
-	msg.msg_name = NULL;
-	msg.msg_namelen = 0;
-	msg.msg_control = NULL;
-	msg.msg_controllen = 0;
 
     while (!kthread_should_stop()) {
         schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
@@ -56,10 +51,15 @@ static int CliRecvThread(void *data) {
 		}
 		mutex_unlock(&clihost->ptr_mutex);
 
+		recvmsg.msg_name = NULL;
+		recvmsg.msg_namelen = 0;
+		recvmsg.msg_control = NULL;
+		recvmsg.msg_controllen = 0;
+		recvmsg.msg_flags = 0;
         iov.iov_base = (void *)msg_req;
         iov.iov_len = sizeof(struct netmsg_req);
 
-		len = kernel_recvmsg(clihost->sock, &msg, &iov, 1, 
+		len = kernel_recvmsg(clihost->sock, &recvmsg, &iov, 1, 
 					sizeof(struct netmsg_req), 0);
         KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_recvmsg en=%d\n",len);
         //close of client
@@ -109,7 +109,13 @@ static int CliRecvThread(void *data) {
 				iov.iov_base = (void *)msg_wrdata;
 				iov.iov_len = sizeof(struct netmsg_data);
 
-				len = kernel_recvmsg(clihost->datasock, &msg, &iov, 1, sizeof(struct netmsg_data), 0);
+				recvdatamsg.msg_name = NULL;
+				recvdatamsg.msg_namelen = 0;
+				recvdatamsg.msg_control = NULL;
+				recvdatamsg.msg_controllen = 0;
+				recvdatamsg.msg_flags = 0;
+
+				len = kernel_recvmsg(clihost->datasock, &recvmsg, &iov, 1, sizeof(struct netmsg_data), 0);
 				if (len < 0 || len != sizeof(struct netmsg_data)) {
 					KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_recvmsg err, len=%d, buffer=%ld\n",
 					        len, sizeof(struct netmsg_req));
@@ -146,9 +152,15 @@ static int CliRecvThread(void *data) {
 				iov.iov_base = (void *)msg_rddata;
 				iov.iov_len = sizeof(struct netmsg_data);
 
-				len = kernel_sendmsg(clihost->datasock, &msg, &iov, 1, sizeof(struct netmsg_data));
+				senddatamsg.msg_name = (void *)&clihost->host_data_addr;
+				senddatamsg.msg_namelen = sizeof(struct sockaddr_in);
+				senddatamsg.msg_control = NULL;
+				senddatamsg.msg_controllen = 0;
+				senddatamsg.msg_flags = 0;
+
+				len = kernel_sendmsg(clihost->datasock, &senddatamsg, &iov, 1, sizeof(struct netmsg_data));
 				if (len < 0 || len != sizeof(struct netmsg_data)) {
-					KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_recvmsg err, len=%d, buffer=%ld\n",
+					KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_sendmsg err, len=%d, buffer=%ld\n",
 					        len, sizeof(struct netmsg_req));
 				    if (len == -ECONNREFUSED) {
 						KER_DEBUG(KERN_ALERT"mempool thread: Receive Port Unreachable packet!\n");
@@ -159,9 +171,14 @@ static int CliRecvThread(void *data) {
 			default:
 				continue;
 		}
+		sendmsg.msg_name = (void *)&clihost->host_addr;
+		sendmsg.msg_namelen = sizeof(struct sockaddr_in);
+		sendmsg.msg_control = NULL;
+		sendmsg.msg_controllen = 0;
+		sendmsg.msg_flags = 0;
 		iov.iov_base = (void *)msg_rpy;
 		iov.iov_len = sizeof(struct netmsg_rpy);
-		len = kernel_sendmsg(clihost->sock, &msg, &iov, 1, sizeof(struct netmsg_rpy));
+		len = kernel_sendmsg(clihost->sock, &sendmsg, &iov, 1, sizeof(struct netmsg_rpy));
 
 		if(len != sizeof(struct netmsg_rpy)) {
 			KER_DEBUG(KERN_INFO"kernel_sendmsg err, len=%d, buffer=%ld\n",
@@ -271,6 +288,7 @@ int mempool_listen_thread(void *data)
 		clihost->datasock = data_sock;
 		clihost->state = CLIHOST_STATE_CONNECTED;
 		kernel_getpeername(cli_sock, (struct sockaddr *)&clihost->host_addr, &sockaddrlen);
+		kernel_getpeername(data_sock, (struct sockaddr *)&clihost->host_data_addr, &sockaddrlen);
 
 		//init client host, slab, list_head
 		mutex_init(&clihost->ptr_mutex);
