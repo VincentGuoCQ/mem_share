@@ -8,7 +8,6 @@
 struct vmem_dev *Devices = NULL;
 struct cli_blk blktable[BLK_NUM_MAX];
 struct vpage_alloc vpage_alloc;
-struct vpage_read vpage_read;
 
 int vmem_open(struct inode *inode, struct file *filp) {
 	filp->private_data = Devices;
@@ -24,42 +23,46 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 	unsigned int nBlkIndex = 0;
 	unsigned int nPageIndex = 0;
 
+	KER_PRT(KERN_INFO"begin to read:%ld\n", jiffies);
+
 	nBlkIndex = GET_BLK_INDEX(*ppos);
 	nPageIndex = GET_VPAGE_INDEX(*ppos);
 
-	printk(KERN_INFO"blk:%d,vpage:%d\n", nBlkIndex, nPageIndex);
+	KER_DEBUG(KERN_INFO"blk:%d,vpage:%d\n", nBlkIndex, nPageIndex);
 	if(nBlkIndex > BLK_NUM_MAX || nPageIndex > VPAGE_NUM_IN_BLK) {
-		printk(KERN_INFO"vmem:%s:illegal address\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:illegal address\n", __FUNCTION__);
 		return ERR_VMEM_ARG_ILLEGAL;
 	}
 	if(count > VPAGE_SIZE) {
-		printk(KERN_INFO"vmem:%s:page size too large\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:page size too large\n", __FUNCTION__);
 		return ERR_VMEM_ARG_ILLEGAL;
 	}
 	if(!dev->addr_entry[nBlkIndex].inuse) {
-		printk(KERN_INFO"vmem:%s:memory not mapped\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:memory not mapped\n", __FUNCTION__);
 		return ERR_VMEM_NOT_MAPPED;
 	}
 	if(!dev->addr_entry[nBlkIndex].page_bitmap[nPageIndex]) {
-		printk(KERN_INFO"vmem:%s:page not used\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:page not used\n", __FUNCTION__);
 		return ERR_VMEM_PAGE_NOT_USED;
 	}
 	//vpage in native
 	if(dev->addr_entry[nBlkIndex].native) {
 		mutex_lock(&dev->addr_entry[nBlkIndex].handle_mutex);
-		mutex_lock(&dev->vpage_read->access_mutex);
 
 		copy_to_user(buf, 
 					dev->addr_entry[nBlkIndex].entry.native.addr + nPageIndex * VPAGE_SIZE,
 					count);
 
-		mutex_unlock(&dev->vpage_read->access_mutex);
 		mutex_unlock(&dev->addr_entry[nBlkIndex].handle_mutex);
+		KER_PRT(KERN_INFO"end to read:%ld\n", jiffies);
+		return count;
 	}
 	//vpage in remote
 	else if(dev->addr_entry[nBlkIndex].remote){
 		struct netmsg_req * msg_req = NULL;
 		struct server_host *serhost = NULL;
+		struct list_head *p = NULL, *next = NULL;
+		struct netmsg_data *msg_rddata = NULL;
 		serhost = dev->addr_entry[nBlkIndex].entry.vmem.serhost;
 		if(!serhost) {
 			goto err_null_ptr;
@@ -69,14 +72,31 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 
 		//post read msg to list
 		msg_req->msgID = NETMSG_CLI_REQUEST_READ;
-		//msg_req->info.req_write.vpageaddr = pmemwrite->vpageaddr;
+		msg_req->info.req_write.vpageaddr = (unsigned long)*ppos;
 		msg_req->info.req_read.remoteIndex
 			= dev->addr_entry[nBlkIndex].entry.vmem.blk_remote_index;
 		msg_req->info.req_read.pageIndex = nPageIndex;
 		mutex_lock(&serhost->lshd_req_msg_mutex);
 		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
-		printk(KERN_INFO"add read msg in inuse server\n");
+		KER_DEBUG(KERN_INFO"add read msg in inuse server\n");
+		while(1) {
+			schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
+			mutex_lock(&Devices->lshd_read_mutex);
+			list_for_each_safe(p, next, &Devices->lshd_read) {
+				msg_rddata = list_entry(p, struct netmsg_data, ls_req); 
+				if(msg_rddata->vpageaddr == *ppos) {
+					copy_to_user(buf, msg_rddata->data, count);
+					list_del(p);
+					kmem_cache_free(Devices->slab_netmsg_data, msg_rddata);
+					mutex_unlock(&Devices->lshd_read_mutex);
+					KER_PRT(KERN_INFO"end to read:%ld\n", jiffies);
+					return count;
+				}
+			}
+			mutex_unlock(&Devices->lshd_read_mutex);
+		}
+
 	}
 
 err_null_ptr:
@@ -88,36 +108,36 @@ static ssize_t vmem_write(struct file *filp, const char __user *buf, size_t coun
 	unsigned int nBlkIndex = 0;
 	unsigned int nPageIndex = 0;
 
+	KER_PRT(KERN_INFO"begin to write:%ld\n", jiffies);
+
 	nBlkIndex = GET_BLK_INDEX(*ppos);
 	nPageIndex = GET_VPAGE_INDEX(*ppos);
 
-	printk(KERN_INFO"blk:%d,vpage:%d\n", nBlkIndex, nPageIndex);
+	KER_DEBUG(KERN_INFO"blk:%d,vpage:%d\n", nBlkIndex, nPageIndex);
 	if(nBlkIndex > BLK_NUM_MAX || nPageIndex > VPAGE_NUM_IN_BLK) {
-		printk(KERN_INFO"vmem:%s:illegal address\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:illegal address\n", __FUNCTION__);
 		return ERR_VMEM_ARG_ILLEGAL;
 	}
 	if(count > VPAGE_SIZE) {
-		printk(KERN_INFO"vmem:%s:page size too large\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:page size too large\n", __FUNCTION__);
 		return ERR_VMEM_ARG_ILLEGAL;
 	}
 
 	if(!dev->addr_entry[nBlkIndex].inuse) {
-		printk(KERN_INFO"vmem:%s:memory not mapped\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:memory not mapped\n", __FUNCTION__);
 		return ERR_VMEM_NOT_MAPPED;
 	}
 	if(!dev->addr_entry[nBlkIndex].page_bitmap[nPageIndex]) {
-		printk(KERN_INFO"vmem:%s:page not used\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:page not used\n", __FUNCTION__);
 		return ERR_VMEM_PAGE_NOT_USED;
 	}
 	//vpage in native
 	if(dev->addr_entry[nBlkIndex].native) {
 		mutex_lock(&dev->addr_entry[nBlkIndex].handle_mutex);
-		mutex_lock(&dev->vpage_read->access_mutex);
 
 		copy_from_user(dev->addr_entry[nBlkIndex].entry.native.addr + nPageIndex * VPAGE_SIZE,
 					buf, count);
 
-		mutex_unlock(&dev->vpage_read->access_mutex);
 		mutex_unlock(&dev->addr_entry[nBlkIndex].handle_mutex);
 	}
 	//vpage in remote
@@ -143,15 +163,18 @@ static ssize_t vmem_write(struct file *filp, const char __user *buf, size_t coun
 		mutex_lock(&serhost->lshd_req_msg_mutex);
 		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
-		printk(KERN_INFO"add write msg in inuse server\n");
+		KER_DEBUG(KERN_INFO"add write msg in inuse server\n");
 
 		//post data to list
 		copy_from_user(msg_wrdata->data, buf, count);
 		mutex_lock(&serhost->lshd_wrdata_mutex);
 		list_add_tail(&msg_wrdata->ls_req, &serhost->lshd_wrdata);
 		mutex_unlock(&serhost->lshd_wrdata_mutex);
-		printk(KERN_INFO"add write data in inuse server\n");
+		KER_DEBUG(KERN_INFO"add write data in inuse server\n");
 	}
+
+	KER_PRT(KERN_INFO"end to write:%ld\n", jiffies);
+
 err_null_ptr:
 	return count;
 }
@@ -174,6 +197,7 @@ static void destory_device(struct vmem_dev *dev, int which) {
 	int nIndex = 0;
 	struct list_head *p = NULL, *next = NULL;
 	struct server_host *pserhost = NULL;
+	struct netmsg_data *preaddata = NULL;
 
 	if(!dev) {
 		return;
@@ -182,7 +206,7 @@ static void destory_device(struct vmem_dev *dev, int which) {
 	if(dev->DaemonThread) {
 		kthread_stop(dev->DaemonThread);
 	}
-	printk(KERN_INFO"vmem:destory daemon thread\n");
+	KER_DEBUG(KERN_INFO"vmem:destory daemon thread\n");
 	//destroy native block
 	for(nIndex = 0; nIndex < BLK_NUM_MAX; nIndex++) {
 		if(dev->addr_entry[nIndex].inuse && dev->addr_entry[nIndex].native) {
@@ -192,7 +216,16 @@ static void destory_device(struct vmem_dev *dev, int which) {
 			dev->addr_entry[nIndex].native = FALSE;
 		}
 	}
-	printk(KERN_INFO"vmem:destory native block\n");
+	KER_DEBUG(KERN_INFO"vmem:destory native block\n");
+	//destory read block list
+	mutex_lock(&dev->lshd_read_mutex);
+	list_for_each_safe(p, next, &dev->lshd_read) {
+		preaddata = list_entry(p, struct netmsg_data, ls_req);
+		list_del(&preaddata->ls_req);
+		kmem_cache_free(dev->slab_netmsg_data, preaddata);
+	}
+	mutex_unlock(&dev->lshd_read_mutex);
+	KER_DEBUG(KERN_INFO"vmem:destory serverhost avail list\n");
 	//destory server host avail list
 	mutex_lock(&dev->lshd_avail_mutex);
 	list_for_each_safe(p, next, &dev->lshd_available) {
@@ -201,7 +234,7 @@ static void destory_device(struct vmem_dev *dev, int which) {
 		kmem_cache_free(dev->slab_server_host, pserhost);
 	}
 	mutex_unlock(&dev->lshd_avail_mutex);
-	printk(KERN_INFO"vmem:destory serverhost avail list\n");
+	KER_DEBUG(KERN_INFO"vmem:destory serverhost avail list\n");
 
 	//destory server host inuse list 
 	mutex_lock(&dev->lshd_inuse_mutex);
@@ -215,20 +248,24 @@ static void destory_device(struct vmem_dev *dev, int which) {
 			sock_release(pserhost->sock);
 			pserhost->sock = NULL;
 		}
+		if(pserhost->datasock) {
+			sock_release(pserhost->datasock);
+			pserhost->datasock = NULL;
+		}
 		mutex_unlock(&pserhost->ptr_mutex);
-		printk(KERN_INFO"vmem:destory serverhost inuse sock\n");
+		KER_DEBUG(KERN_INFO"vmem:destory serverhost inuse sock\n");
 
 		if(pserhost->SerSendThread) {
 			kthread_stop(pserhost->SerSendThread);
 			pserhost->SerSendThread = NULL;
 		}
-		printk(KERN_INFO"vmem:destory serverhost inuse send thread\n");
+		KER_DEBUG(KERN_INFO"vmem:destory serverhost inuse send thread\n");
 
 		if(pserhost->SerRecvThread) {
 			kthread_stop(pserhost->SerRecvThread);
 			pserhost->SerRecvThread = NULL;
 		}
-		printk(KERN_INFO"vmem:destory serverhost inuse recv thread\n");
+		KER_DEBUG(KERN_INFO"vmem:destory serverhost inuse recv thread\n");
 
 		mutex_lock(&pserhost->lshd_req_msg_mutex);
 		list_for_each_safe(sp, snext, &pserhost->lshd_req_msg) {
@@ -242,7 +279,7 @@ static void destory_device(struct vmem_dev *dev, int which) {
 		kmem_cache_free(dev->slab_server_host, pserhost);
 	}
 	mutex_unlock(&dev->lshd_inuse_mutex);
-	printk(KERN_INFO"vmem:destory serverhost inuse list\n");
+	KER_DEBUG(KERN_INFO"vmem:destory serverhost inuse list\n");
 	//delete slab
 	if(dev->slab_server_host) {
 		kmem_cache_destroy(dev->slab_server_host);
@@ -269,6 +306,7 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	//init list head
 	INIT_LIST_HEAD(&dev->lshd_available);
 	INIT_LIST_HEAD(&dev->lshd_inuse);
+	INIT_LIST_HEAD(&dev->lshd_read);
 
 	dev->devno = devno;
 	//init dev	
@@ -276,7 +314,7 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	dev->gd.owner = THIS_MODULE;
 	ret = cdev_add(&dev->gd, dev->devno, 1);
 	if(ret) {
-		printk(KERN_NOTICE"Error %d adding vmem\n", ret);
+		KER_DEBUG(KERN_NOTICE"Error %d adding vmem\n", ret);
 		ret = KERERR_CREATE_DEVICE;
 		goto err_create_device;
 	}
@@ -286,7 +324,7 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	//create sysfs file
 	ret = create_sysfs_file(dev->dev);
 	if(ret == KERERR_CREATE_FILE) {
-		printk(KERN_NOTICE"vmem:create sysfs file fail\n");
+		KER_DEBUG(KERN_NOTICE"vmem:create sysfs file fail\n");
 		goto err_sysfs_create;
 	}
 
@@ -294,25 +332,26 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	dev->slab_server_host = kmem_cache_create("vmem_serhost",
 				sizeof(struct server_host), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
 	if(NULL == dev->slab_server_host) {
-		printk(KERN_NOTICE"vmem:create vmem_serhost slab fail\n");
+		KER_DEBUG(KERN_NOTICE"vmem:create vmem_serhost slab fail\n");
 		goto err_serhost_slab;
 	}
 	dev->slab_netmsg_req = kmem_cache_create("vmem_netmsg_req",
 				sizeof(struct netmsg_req), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
 	if(NULL == dev->slab_netmsg_req) {
-		printk(KERN_NOTICE"vmem:create vmem_serhost slab fail\n");
+		KER_DEBUG(KERN_NOTICE"vmem:create vmem_serhost slab fail\n");
 		goto err_netmsg_req_slab;
 	}
 	dev->slab_netmsg_data = kmem_cache_create("vmem_netmsg_data",
 				sizeof(struct netmsg_data), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
 	if(NULL == dev->slab_netmsg_data) {
-		printk(KERN_NOTICE"vmem:create vmem_serhost slab fail\n");
+		KER_DEBUG(KERN_NOTICE"vmem:create vmem_serhost slab fail\n");
 		goto err_netmsg_data_slab;
 	}
 	//init mutex
 	mutex_init(&dev->lshd_avail_mutex);
 	mutex_init(&dev->lshd_inuse_mutex);
-	printk(KERN_NOTICE"vmem:vmem_create\n");
+	mutex_init(&dev->lshd_read_mutex);
+	KER_DEBUG(KERN_NOTICE"vmem:vmem_create\n");
 
 	//init block table
 	memset(blktable, 0, sizeof(blktable));
@@ -326,9 +365,9 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	mutex_init(&vpage_alloc.access_mutex);
 	dev->vpage_alloc = &vpage_alloc;
 	//init vpage read
-	memset(&vpage_read, 0 ,sizeof(struct vpage_read));
-	mutex_init(&vpage_read.access_mutex);
-	dev->vpage_read = &vpage_read;
+//	memset(&vpage_read, 0 ,sizeof(struct vpage_read));
+//	mutex_init(&vpage_read.access_mutex);
+//	dev->vpage_read = &vpage_read;
 	//init daemon thread
 	dev->DaemonThread = kthread_create(vmem_daemon, (void *)dev, "vmem daemon");
 	wake_up_process(dev->DaemonThread);
@@ -360,7 +399,7 @@ static int __init vmem_init(void) {
 		vmem_minor = MINOR(devno);
 	}
 	if(vmem_major <= 0) {
-		printk(KERN_WARNING"vmem:%s: unable to get major number\n", VMEM_NAME);
+		KER_DEBUG(KERN_WARNING"vmem:%s: unable to get major number\n", VMEM_NAME);
 		return -EBUSY;
 	}
 	Devices = (struct vmem_dev *)kmalloc(ndevices * sizeof(struct vmem_dev), GFP_KERNEL);
@@ -369,7 +408,7 @@ static int __init vmem_init(void) {
 	}
 
 	setup_device(Devices, devno);
-	printk(KERN_NOTICE"vmem:vmem_init\n");
+	KER_DEBUG(KERN_NOTICE"vmem:vmem_init\n");
 	return 0;
 
 out_unregister:
@@ -381,7 +420,7 @@ static void vmem_exit(void) {
 	destory_device(Devices, 0);
 	unregister_chrdev_region(MKDEV(vmem_major, 0), 1);
 	kfree(Devices);
-	printk(KERN_NOTICE"vmem:vmem_exit\n");
+	KER_DEBUG(KERN_NOTICE"vmem:vmem_exit\n");
 }
 
 module_init(vmem_init);

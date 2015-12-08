@@ -100,7 +100,7 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 	char IPaddr[IP_ADDR_LEN];
 
 	if(count != sizeof(struct MsgCliOp)) {
-		printk(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
 		return ERR_VMEM_ARG_ILLEGAL;
 	}
 	cliop = (struct MsgCliOp *)kmalloc(sizeof(struct MsgCliOp), GFP_KERNEL);
@@ -109,8 +109,8 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 		//add server
 		case CLIHOST_OP_ADD_SERHOST: {
 			IP_convert(&cliop->info.addser.host_addr, IPaddr, IP_ADDR_LEN);
-			printk(KERN_INFO"vmem:server add\n");
-			printk(KERN_INFO"name:%s,addr:%s", cliop->info.addser.host_name, IPaddr);
+			KER_DEBUG(KERN_INFO"vmem:server add\n");
+			KER_DEBUG(KERN_INFO"name:%s,addr:%s", cliop->info.addser.host_name, IPaddr);
 			//allocate memory and copy to memory
 			serhostnew = (struct server_host *)kmem_cache_alloc(Devices->slab_server_host, GFP_KERNEL);
 			memset(serhostnew, 0, sizeof(struct server_host));
@@ -123,7 +123,7 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 				serhost = list_entry(p, struct server_host, ls_inuse);
 				if(!memcmp(&serhostnew->host_addr.sin_addr.s_addr,
 								&serhost->host_addr.sin_addr.s_addr, sizeof(struct in_addr))) {
-					printk(KERN_INFO"vmem:server add:same server\n");
+					KER_DEBUG(KERN_INFO"vmem:server add:same server\n");
 					break;
 				}
 			}
@@ -133,7 +133,7 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 				serhost = list_entry(p, struct server_host, ls_available);
 				if(!memcmp(&serhostnew->host_addr.sin_addr.s_addr,
 								&serhost->host_addr.sin_addr.s_addr, sizeof(struct in_addr))) {
-					printk(KERN_INFO"vmem:server add:same server\n");
+					KER_DEBUG(KERN_INFO"vmem:server add:same server\n");
 					break;
 				}
 			}
@@ -162,8 +162,8 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 		//modify server
 		case CLIHOST_OP_MOD_SERHOST: {
 			IP_convert(&cliop->info.modser.host_addr, IPaddr, IP_ADDR_LEN);
-			printk(KERN_INFO"vmem:server modify\n");
-			printk(KERN_INFO"addr:%s", IPaddr);
+			KER_DEBUG(KERN_INFO"vmem:server modify\n");
+			KER_DEBUG(KERN_INFO"addr:%s", IPaddr);
 
 			//search for existing
 			mutex_lock(&Devices->lshd_inuse_mutex);
@@ -194,9 +194,9 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 		//map local memory
 		case CLIHOST_OP_MAP_LOCAL:{
 			int nCount = 0, nBlk = 0, nIndex = 0;
-			printk(KERN_INFO"vmem:map local\n");
+			KER_DEBUG(KERN_INFO"vmem:map local\n");
 			nBlk = cliop->info.maplocal.block_num;
-			printk(KERN_INFO"vmem:map local num:%d\n", nBlk);
+			KER_DEBUG(KERN_INFO"vmem:map local num:%d\n", nBlk);
 			if(!Devices->addr_entry) {
 				goto err_null_ptr;
 			}
@@ -225,7 +225,7 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 				kmem_cache_free(Devices->slab_server_host, serhost);
 			}
 			mutex_unlock(&Devices->lshd_avail_mutex);
-			printk(KERN_INFO"vmem:delete serverhost avail list\n");
+			KER_DEBUG(KERN_INFO"vmem:delete serverhost avail list\n");
 			break;
 		}
 		//delete server host inuse
@@ -243,7 +243,7 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 					kmem_cache_free(serhost->slab_netmsg_req, netmsg_req);
 				}
 				mutex_unlock(&serhost->lshd_req_msg_mutex);
-				printk(KERN_INFO"vmem:delete serverhost netmsg req\n");
+				KER_DEBUG(KERN_INFO"vmem:delete serverhost netmsg req\n");
 
 				mutex_lock(&serhost->ptr_mutex);
 				if(serhost->sock) {
@@ -251,18 +251,18 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 					serhost->sock = NULL;
 				}
 				mutex_unlock(&serhost->ptr_mutex);
-				printk(KERN_INFO"vmem:delete serverhost inuse sock\n");
+				KER_DEBUG(KERN_INFO"vmem:delete serverhost inuse sock\n");
 				if(serhost->SerSendThread) {
 					kthread_stop(serhost->SerSendThread);
 					serhost->SerSendThread = NULL;
 				}
-				printk(KERN_INFO"vmem:delete serverhost inuse send thread\n");
+				KER_DEBUG(KERN_INFO"vmem:delete serverhost inuse send thread\n");
 
 				list_del(&serhost->ls_inuse);
 				kmem_cache_free(Devices->slab_server_host, serhost);
 			}
 			mutex_unlock(&Devices->lshd_inuse_mutex);
-			printk(KERN_INFO"vmem:delete serverhost inuse list\n");
+			KER_DEBUG(KERN_INFO"vmem:delete serverhost inuse list\n");
 			break;
 		}
 	}
@@ -286,12 +286,12 @@ static ssize_t clihost_alloc_store(struct device *dev, struct device_attribute *
 	unsigned int nPageIndex = 0;
 
 	if(count != sizeof(struct MsgMemAlloc)) {
-		printk(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
 		return ERR_VMEM_ARG_ILLEGAL;
 	}
 	memcpy(&memalloc, buf, count);
 	if(memalloc.vpagenum > VPAGE_PER_ALLOC) {
-		printk(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
 		return ERR_VMEM_ARG_ILLEGAL;
 	}
 	mutex_lock(&Devices->vpage_alloc->access_mutex);
@@ -328,7 +328,7 @@ static ssize_t clihost_alloc_show(struct device *dev, struct device_attribute *a
 	mutex_lock(&Devices->vpage_alloc->access_mutex);
 	for(nIndex = 0; nIndex < Devices->vpage_alloc->vpagenum; nIndex++) {
 		memret.vpageaddr[nIndex] = Devices->vpage_alloc->vpageaddr[nIndex];
-		printk(KERN_INFO"page:%lx\n", memret.vpageaddr[nIndex]);
+		KER_DEBUG(KERN_INFO"page:%lx\n", memret.vpageaddr[nIndex]);
 	}
 	mutex_unlock(&Devices->vpage_alloc->access_mutex);
 
@@ -346,12 +346,12 @@ static ssize_t clihost_free_store(struct device *dev, struct device_attribute *a
 	unsigned int nPageIndex = 0;
 
 	if(count != sizeof(struct MsgMemFree)) {
-		printk(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
 		return ERR_VMEM_ARG_ILLEGAL;
 	}
 	memcpy(&memfree, buf, count);
 	if(memfree.vpagenum > VPAGE_PER_ALLOC) {
-		printk(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
+		KER_DEBUG(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
 		return ERR_VMEM_ARG_ILLEGAL;
 	}
 
@@ -361,7 +361,7 @@ static ssize_t clihost_free_store(struct device *dev, struct device_attribute *a
 		if(nBlkIndex > BLK_NUM_MAX || nPageIndex > VPAGE_NUM_IN_BLK)
 		  continue;
 
-		printk(KERN_INFO"blk:%d,vpage:%d\n", nBlkIndex, nPageIndex);
+		KER_DEBUG(KERN_INFO"blk:%d,vpage:%d\n", nBlkIndex, nPageIndex);
 		mutex_lock(&Devices->addr_entry[nBlkIndex].handle_mutex);
 		if(Devices->addr_entry[nBlkIndex].page_bitmap[nPageIndex]) {
 			Devices->addr_entry[nBlkIndex].page_bitmap[nPageIndex] = FALSE;
@@ -374,174 +374,6 @@ static ssize_t clihost_free_store(struct device *dev, struct device_attribute *a
 }
 static DEVICE_ATTR_WO(clihost_free);
 
-//read page
-static ssize_t clihost_read_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
-	struct MsgMemRead memread;
-	unsigned int nBlkIndex = 0;
-	unsigned int nPageIndex = 0;
-
-	if(count != sizeof(struct MsgMemRead)) {
-		printk(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
-		return ERR_VMEM_ARG_ILLEGAL;
-	}
-
-	memcpy(&memread, buf, sizeof(struct MsgMemRead));
-
-	nBlkIndex = GET_BLK_INDEX(memread.vpageaddr);
-	nPageIndex = GET_VPAGE_INDEX(memread.vpageaddr);
-
-	printk(KERN_INFO"blk:%d,vpage:%d\n", nBlkIndex, nPageIndex);
-	if(nBlkIndex > BLK_NUM_MAX || nPageIndex > VPAGE_NUM_IN_BLK) {
-		printk(KERN_INFO"vmem:%s:illegal address\n", __FUNCTION__);
-		return ERR_VMEM_ARG_ILLEGAL;
-	}
-
-	if(!Devices->addr_entry[nBlkIndex].inuse) {
-		printk(KERN_INFO"vmem:%s:memory not mapped\n", __FUNCTION__);
-		return ERR_VMEM_NOT_MAPPED;
-	}
-	if(!Devices->addr_entry[nBlkIndex].page_bitmap[nPageIndex]) {
-		printk(KERN_INFO"vmem:%s:page not used\n", __FUNCTION__);
-		return ERR_VMEM_PAGE_NOT_USED;
-	}
-	//vpage in native
-	if(Devices->addr_entry[nBlkIndex].native) {
-		mutex_lock(&Devices->addr_entry[nBlkIndex].handle_mutex);
-		mutex_lock(&Devices->vpage_read->access_mutex);
-
-		Devices->vpage_read->vpageaddr = memread.vpageaddr;
-		memcpy(Devices->vpage_read->Data, 
-					Devices->addr_entry[nBlkIndex].entry.native.addr + nPageIndex * VPAGE_SIZE,
-					VPAGE_SIZE);
-
-		mutex_unlock(&Devices->vpage_read->access_mutex);
-		mutex_unlock(&Devices->addr_entry[nBlkIndex].handle_mutex);
-	}
-	//vpage in remote
-	else if(Devices->addr_entry[nBlkIndex].remote){
-		struct netmsg_req * msg_req = NULL;
-		struct server_host *serhost = NULL;
-		serhost = Devices->addr_entry[nBlkIndex].entry.vmem.serhost;
-		if(!serhost) {
-			goto err_null_ptr;
-		}
-		msg_req = (struct netmsg_req *)kmem_cache_alloc(serhost->slab_netmsg_req, GFP_USER);
-		memset((void *)msg_req, 0, sizeof(struct netmsg_req));
-
-		//post read msg to list
-		msg_req->msgID = NETMSG_CLI_REQUEST_READ;
-		msg_req->info.req_read.vpageaddr = memread.vpageaddr;
-		msg_req->info.req_read.remoteIndex
-			= Devices->addr_entry[nBlkIndex].entry.vmem.blk_remote_index;
-		msg_req->info.req_read.pageIndex = nPageIndex;
-		mutex_lock(&serhost->lshd_req_msg_mutex);
-		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
-		mutex_unlock(&serhost->lshd_req_msg_mutex);
-		printk(KERN_INFO"add read msg in inuse server\n");
-	}
-
-err_null_ptr:
-	return count;
-}
-static ssize_t clihost_read_show(struct device *dev, struct device_attribute *attr, char *buf) {
-	char * out = buf;
-	struct MsgMemReadRet *pmemreadret = NULL;
-
-	pmemreadret = (struct MsgMemReadRet *)kmalloc(sizeof(struct MsgMemReadRet), GFP_USER);
-
-	mutex_lock(&Devices->vpage_read->access_mutex);
-
-	pmemreadret->vpageaddr = Devices->vpage_read->vpageaddr;
-	printk(KERN_INFO"vpage addr:%lx\n", pmemreadret->vpageaddr);
-	memcpy((void *)pmemreadret->Data, (void *)Devices->vpage_read->Data, VPAGE_SIZE);
-	memcpy((void *)out, (void *)pmemreadret, sizeof(struct MsgMemRet));
-	out += sizeof(struct MsgMemRet);
-
-	mutex_unlock(&Devices->vpage_read->access_mutex);
-
-	kfree(pmemreadret);
-
-	return out - buf;
-}
-static DEVICE_ATTR(clihost_read, S_IWUSR|S_IRUSR, clihost_read_show, clihost_read_store);
-
-//write page
-static ssize_t clihost_write_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
-	struct MsgMemWrite *pmemwrite = NULL;
-	unsigned int nBlkIndex = 0;
-	unsigned int nPageIndex = 0;
-
-	printk(KERN_INFO"vmem:page write\n");
-	if(count != sizeof(struct MsgMemWrite)) {
-		printk(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
-		return ERR_VMEM_ARG_ILLEGAL;
-	}
-	pmemwrite = (struct MsgMemWrite *)kmalloc(sizeof(struct MsgMemWrite), GFP_USER);
-	memcpy(pmemwrite, buf, sizeof(struct MsgMemWrite));
-
-	nBlkIndex = GET_BLK_INDEX(pmemwrite->vpageaddr);
-	nPageIndex = GET_VPAGE_INDEX(pmemwrite->vpageaddr);
-	
-	if(nBlkIndex > BLK_NUM_MAX || nPageIndex > VPAGE_NUM_IN_BLK) {
-		printk(KERN_INFO"vmem:%s:illegal address\n", __FUNCTION__);
-		return ERR_VMEM_ARG_ILLEGAL;
-	}
-	if(!Devices->addr_entry[nBlkIndex].inuse) {
-		printk(KERN_INFO"vmem:%s:memory not mapped\n", __FUNCTION__);
-		return ERR_VMEM_NOT_MAPPED;
-	}
-	if(!Devices->addr_entry[nBlkIndex].page_bitmap[nPageIndex]) {
-		printk(KERN_INFO"vmem:%s:page not used\n", __FUNCTION__);
-		return ERR_VMEM_PAGE_NOT_USED;
-	}
-	printk(KERN_INFO"vmem:%s:page write:%s\n", __FUNCTION__, pmemwrite->Data);
-	//vpage in native
-	if(Devices->addr_entry[nBlkIndex].native) {
-		mutex_lock(&Devices->addr_entry[nBlkIndex].handle_mutex);
-		memcpy(Devices->addr_entry[nBlkIndex].entry.native.addr + nPageIndex * VPAGE_SIZE,
-					pmemwrite->Data, VPAGE_SIZE);
-		mutex_unlock(&Devices->addr_entry[nBlkIndex].handle_mutex);
-	}
-	//vpage in remote
-	else if(Devices->addr_entry[nBlkIndex].remote){
-		struct netmsg_req * msg_req = NULL;
-		struct netmsg_data * msg_wrdata = NULL;
-		struct server_host *serhost = NULL;
-		serhost = Devices->addr_entry[nBlkIndex].entry.vmem.serhost;
-		if(!serhost) {
-			goto err_null_ptr;
-		}
-		msg_req = (struct netmsg_req *)kmem_cache_alloc(serhost->slab_netmsg_req, GFP_USER);
-		msg_wrdata = (struct netmsg_data *)kmem_cache_alloc(serhost->slab_netmsg_data, GFP_USER);
-		memset((void *)msg_req, 0, sizeof(struct netmsg_req));
-		memset((void *)msg_wrdata, 0, sizeof(struct netmsg_data));
-
-		//post write msg to list
-		msg_req->msgID = NETMSG_CLI_REQUEST_WRITE;
-		msg_req->info.req_write.vpageaddr = pmemwrite->vpageaddr;
-		msg_req->info.req_write.remoteIndex
-			= Devices->addr_entry[nBlkIndex].entry.vmem.blk_remote_index;
-		msg_req->info.req_write.pageIndex = nPageIndex;
-		mutex_lock(&serhost->lshd_req_msg_mutex);
-		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
-		mutex_unlock(&serhost->lshd_req_msg_mutex);
-		printk(KERN_INFO"add write msg in inuse server\n");
-
-		//post data to list
-		memcpy(msg_wrdata->data, pmemwrite->Data, VPAGE_SIZE);
-		mutex_lock(&serhost->lshd_wrdata_mutex);
-		list_add_tail(&msg_wrdata->ls_req, &serhost->lshd_wrdata);
-		mutex_unlock(&serhost->lshd_wrdata_mutex);
-		printk(KERN_INFO"add write data in inuse server\n");
-
-	}
-
-err_null_ptr:
-	kfree(pmemwrite);
-	return count;
-}
-static DEVICE_ATTR(clihost_write, S_IWUSR, NULL, clihost_write_store);
-
 int create_sysfs_file(struct device *dev) {
 	int ret = KERERR_SUCCESS;
 	
@@ -551,57 +383,40 @@ int create_sysfs_file(struct device *dev) {
 	}
 	ret = device_create_file(dev, &dev_attr_clihost_priser);
 	if (ret) {
-		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
+		KER_DEBUG(KERN_INFO"vmem:create sysfs file error: %d", ret);
 		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_priser;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_op);
 	if (ret) {
-		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
+		KER_DEBUG(KERN_INFO"vmem:create sysfs file error: %d", ret);
 		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_op;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_priblk);
 	if (ret) {
-		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
+		KER_DEBUG(KERN_INFO"vmem:create sysfs file error: %d", ret);
 		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_priblk;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_alloc);
 	if (ret) {
-		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
+		KER_DEBUG(KERN_INFO"vmem:create sysfs file error: %d", ret);
 		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_alloc;
 	}
 
 	ret = device_create_file(dev, &dev_attr_clihost_free);
 	if (ret) {
-		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
+		KER_DEBUG(KERN_INFO"vmem:create sysfs file error: %d", ret);
 		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_free;
 	}
 
-//	ret = device_create_file(dev, &dev_attr_clihost_read);
-//	if (ret) {
-//		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-//		ret = KERERR_CREATE_FILE;
-//		goto err_sys_create_clihost_read;
-//	}
-//
-//	ret = device_create_file(dev, &dev_attr_clihost_write);
-//	if (ret) {
-//		printk(KERN_INFO"vmem:create sysfs file error: %d", ret);
-//		ret = KERERR_CREATE_FILE;
-//		goto err_sys_create_clihost_write;
-//	}
-
 	return ret;
-//err_sys_create_clihost_write:
-//	device_remove_file(dev, &dev_attr_clihost_read);
-//err_sys_create_clihost_read:
 	device_remove_file(dev, &dev_attr_clihost_free);
 err_sys_create_clihost_free:
 	device_remove_file(dev, &dev_attr_clihost_alloc);
@@ -621,6 +436,4 @@ void delete_sysfs_file(struct device *dev) {
 	device_remove_file(dev, &dev_attr_clihost_priblk);
 	device_remove_file(dev, &dev_attr_clihost_alloc);
 	device_remove_file(dev, &dev_attr_clihost_free);
-//	device_remove_file(dev, &dev_attr_clihost_read);
-//	device_remove_file(dev, &dev_attr_clihost_write);
 }

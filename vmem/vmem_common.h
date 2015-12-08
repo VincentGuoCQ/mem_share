@@ -1,5 +1,14 @@
 #ifndef	VMEM_COMMON_H
 #define VMEM_COMMON_H
+#define DEBUG
+
+#ifdef DEBUG
+#define KER_DEBUG(STR, args...)	printk(STR, ##args)
+#else
+#define KER_DEBUG(STR, args...)
+#endif 
+
+#define KER_PRT(STR, args...)	printk(STR, ##args)
 
 static int vmem_major = 0;
 static int vmem_minor= 0;
@@ -38,12 +47,14 @@ struct server_host {
 	struct list_head ls_inuse;
 	char host_name[HOST_NAME_LEN];
 	struct sockaddr_in host_addr;
+	struct sockaddr_in host_data_addr;
 	unsigned int block_inuse; 
 	unsigned int block_available; 
 	unsigned int state;
 	struct task_struct *SerRecvThread;
 	struct task_struct *SerSendThread;
 	struct socket *sock;
+	struct socket *datasock;
 
 	struct mutex ptr_mutex;
 
@@ -87,11 +98,7 @@ struct vpage_alloc {
 	unsigned int vpagenum;
 	unsigned long vpageaddr[VPAGE_PER_ALLOC];
 };
-struct vpage_read {
-	struct mutex access_mutex;
-	unsigned long vpageaddr;
-	char Data[VPAGE_SIZE];
-};
+
 struct vmem_dev {
 	struct request_queue *queue;
 	struct cdev gd;
@@ -105,6 +112,8 @@ struct vmem_dev {
 	struct mutex lshd_avail_mutex;
 	struct list_head lshd_inuse;
 	struct mutex lshd_inuse_mutex;
+	struct list_head lshd_read;
+	struct mutex lshd_read_mutex;
 
 	struct kmem_cache * slab_server_host;
 	struct cli_blk * addr_entry;
@@ -114,7 +123,6 @@ struct vmem_dev {
 	struct kmem_cache *slab_netmsg_data;
 
 	struct vpage_alloc *vpage_alloc;
-	struct vpage_read *vpage_read;
 };
 
 int vmem_daemon(void *);
