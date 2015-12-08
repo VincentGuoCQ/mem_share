@@ -1,6 +1,6 @@
 #ifndef	VMEM_COMMON_H
 #define VMEM_COMMON_H
-//#define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
 #define KER_DEBUG(STR, args...)	printk(STR, ##args)
@@ -47,6 +47,7 @@ struct server_host {
 	struct list_head ls_inuse;
 	char host_name[HOST_NAME_LEN];
 	struct sockaddr_in host_addr;
+	struct sockaddr_in host_data_addr;
 	unsigned int block_inuse; 
 	unsigned int block_available; 
 	unsigned int state;

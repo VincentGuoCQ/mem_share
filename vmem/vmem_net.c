@@ -50,17 +50,13 @@ static int connect_to_addr(struct socket *sock, struct server_host *serhost, uns
 static int SerRecvThread(void *data) {
     struct kvec iov;
     struct server_host *serhost = (struct server_host *)data;
-	struct msghdr msg;
+	struct msghdr recvmsg, recvdatamsg;
 	struct netmsg_rpy *msg_rpy = (struct netmsg_rpy *)kmalloc(sizeof(struct netmsg_rpy), GFP_USER);
 	struct netmsg_data *msg_rddata = NULL;
 	int len = 0;
 	if(!Devices) {
 		goto err_device_ptr;
 	}
-	msg.msg_name = NULL;
-	msg.msg_namelen = 0;
-	msg.msg_control = NULL;
-	msg.msg_controllen = 0;
 	while(!kthread_should_stop()) {
 		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 		mutex_lock(&serhost->ptr_mutex);
@@ -70,10 +66,15 @@ static int SerRecvThread(void *data) {
 		}
 		mutex_unlock(&serhost->ptr_mutex);
 		memset(msg_rpy, 0, sizeof(struct netmsg_rpy));
+		recvmsg.msg_name = NULL;
+		recvmsg.msg_namelen = 0;
+		recvmsg.msg_control = NULL;
+		recvmsg.msg_controllen = 0;
+		recvmsg.msg_flags = 0;
 		iov.iov_base = (void *)msg_rpy;
 		iov.iov_len = sizeof(struct netmsg_rpy);
 
-		len = kernel_recvmsg(serhost->sock, &msg, &iov, 1,
+		len = kernel_recvmsg(serhost->sock, &recvmsg, &iov, 1,
 					sizeof(struct netmsg_rpy), MSG_DONTWAIT);
 		//close of client
 		if(len == 0) {
@@ -114,11 +115,17 @@ static int SerRecvThread(void *data) {
 			case NETMSG_SER_REPLY_READ: {
 				msg_rddata = (struct netmsg_data *)kmem_cache_alloc(serhost->slab_netmsg_data, GFP_USER);
 				memset(msg_rddata, 0, sizeof(struct netmsg_data));
+				recvdatamsg.msg_name = NULL;
+				recvdatamsg.msg_namelen = 0;
+				recvdatamsg.msg_control = NULL;
+				recvdatamsg.msg_controllen = 0;
+				recvdatamsg.msg_flags = 0;
 				iov.iov_base = (void *)msg_rddata;
 				iov.iov_len = sizeof(struct netmsg_data);
+				KER_DEBUG(KERN_INFO"vmem thread: recvice rpy: read page");
 
-				len = kernel_recvmsg(serhost->datasock, &msg, &iov, 1,
-							sizeof(struct netmsg_data), MSG_DONTWAIT);
+				len = kernel_recvmsg(serhost->datasock, &recvdatamsg, &iov, 1,
+							sizeof(struct netmsg_data), 0);
 				if(len == 0) {
 					break;
 				}
@@ -147,7 +154,7 @@ err_device_ptr:
 static int SerSendThread(void *data) {
     struct kvec iov;
     struct server_host *serhost = (struct server_host *)data;
-	struct msghdr msg;
+	struct msghdr sendmsg, senddatamsg;
 	struct list_head *p = NULL, *next = NULL;
 	struct list_head *pd = NULL, *dnext = NULL;
 	struct netmsg_req *msg_req = NULL;
@@ -155,11 +162,6 @@ static int SerSendThread(void *data) {
     int len;
 
 	memset(&msg_req, 0 ,sizeof(struct netmsg_req));
-	msg.msg_name = NULL;
-	msg.msg_namelen = 0;
-	msg.msg_control = NULL;
-	msg.msg_controllen = 0;
-	msg.msg_flags = 0;
 
     while (!kthread_should_stop()) {
         schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
@@ -179,9 +181,15 @@ static int SerSendThread(void *data) {
 		if(!msg_req) {
 			continue;
 		}
+
+		sendmsg.msg_name = (void *)&serhost->host_addr;
+		sendmsg.msg_namelen = sizeof(struct sockaddr_in);
+		sendmsg.msg_control = NULL;
+		sendmsg.msg_controllen = 0;
+		sendmsg.msg_flags = 0;
         iov.iov_base = (void *)msg_req;
         iov.iov_len = sizeof(struct netmsg_req);
-        len = kernel_sendmsg(serhost->sock, &msg, &iov, 1, sizeof(struct netmsg_req));
+        len = kernel_sendmsg(serhost->sock, &sendmsg, &iov, 1, sizeof(struct netmsg_req));
         if (len != sizeof(struct netmsg_req)) {
             KER_DEBUG(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%ld\n",
                     len, sizeof(struct netmsg_req));
@@ -201,9 +209,14 @@ static int SerSendThread(void *data) {
 			}
 			mutex_unlock(&serhost->lshd_wrdata_mutex);
 			if(msg_wrdata) {
+				senddatamsg.msg_name = (void *)&serhost->host_data_addr;
+				senddatamsg.msg_namelen = sizeof(struct sockaddr_in);
+				senddatamsg.msg_control = NULL;
+				senddatamsg.msg_controllen = 0;
+				senddatamsg.msg_flags = 0;
 				iov.iov_base = (void *)msg_wrdata;
 				iov.iov_len = sizeof(struct netmsg_data);
-				len = kernel_sendmsg(serhost->datasock, &msg, &iov, 1, sizeof(struct netmsg_data));
+				len = kernel_sendmsg(serhost->datasock, &senddatamsg, &iov, 1, sizeof(struct netmsg_data));
 				if (len != sizeof(struct netmsg_data)) {
 					KER_DEBUG(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%ld\n",
 								len, sizeof(struct netmsg_data));
@@ -223,7 +236,6 @@ static int SerSendThread(void *data) {
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
 		kmem_cache_free(serhost->slab_netmsg_req, msg_req);
 
-        KER_DEBUG(KERN_ALERT "kernel_sendmsg: len=%d\n", len);
     }
 	while(!kthread_should_stop()) {
 		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
@@ -234,6 +246,7 @@ static int SerSendThread(void *data) {
 
 int vmem_net_init(struct server_host *serhost) {
     int ret = KERERR_SUCCESS;
+	int sockaddrlen = sizeof(struct sockaddr);
 
     ret = sock_create_kern(PF_INET, SOCK_STREAM, IPPROTO_TCP, &(serhost->sock));
     if (ret < KERERR_SUCCESS) {
@@ -275,6 +288,8 @@ int vmem_net_init(struct server_host *serhost) {
 		ret = KERERR_SOCKET_CONNECT;
         goto connect_error;
     }
+	kernel_getpeername(serhost->sock, (struct sockaddr *)&serhost->host_addr, &sockaddrlen);
+	kernel_getpeername(serhost->datasock, (struct sockaddr *)&serhost->host_data_addr, &sockaddrlen);
 	//create server send thread
 	serhost->SerSendThread = kthread_run(SerSendThread, (void *)serhost, "Server Send thread");
     if (IS_ERR(serhost->SerSendThread)) {
