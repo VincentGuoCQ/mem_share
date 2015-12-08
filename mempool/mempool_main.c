@@ -67,84 +67,57 @@ static void destory_device(struct mempool_dev *dev, int which) {
 			dev->blk[nIndex].avail = FALSE;
 		}
 	}
-	printk(KERN_INFO"mempool:destory block\n");
+	KER_DEBUG(KERN_INFO"mempool:destory block\n");
 	//destroy client list
 	mutex_lock(&dev->lshd_rent_client_mutex);
 	list_for_each_safe(p, next, &dev->lshd_rent_client) {
-		struct list_head *sp = NULL, *snext = NULL;
-		struct netmsg_req *netmsg_req = NULL;
-		struct netmsg_data *netmsg_wrdata = NULL;
 		clihost = list_entry(p, struct client_host, ls_rent);
 
 		mutex_lock(&clihost->ptr_mutex);
 		if(clihost->state == CLIHOST_STATE_CONNECTED) {
 			clihost->state = CLIHOST_STATE_CLOSED;
 			sock_release(clihost->sock);
+			sock_release(clihost->datasock);
 			//clihost->sock = NULL;
 		}
 		mutex_unlock(&clihost->ptr_mutex);
-		printk(KERN_INFO"mempool:destory clienthost sock\n");
+		KER_DEBUG(KERN_INFO"mempool:destory clienthost sock\n");
 
-		if(clihost->CliRecvThread) {
-			kthread_stop(clihost->CliRecvThread);
-			clihost->CliRecvThread = NULL;
+		if(clihost->CliHandleThread) {
+			kthread_stop(clihost->CliHandleThread);
+			clihost->CliHandleThread = NULL;
 		}
-		printk(KERN_INFO"mempool:destory clienthost recv thread\n");
-
-		if(clihost->CliSendThread) {
-			kthread_stop(clihost->CliSendThread);
-			clihost->CliSendThread = NULL;
-		}
-		printk(KERN_INFO"mempool:destory clienthost send thread\n");
-
-		mutex_lock(&clihost->lshd_req_msg_mutex);
-		list_for_each_safe(sp, snext, &clihost->lshd_req_msg) {
-			netmsg_req = list_entry(sp, struct netmsg_req, ls_reqmsg);
-			list_del(&netmsg_req->ls_reqmsg);
-			kmem_cache_free(clihost->slab_netmsg_req, netmsg_req);
-		}
-		mutex_unlock(&clihost->lshd_req_msg_mutex);
-		printk(KERN_INFO"mempool:destory clienthost req msg\n");
-
-		mutex_lock(&clihost->lshd_wrdata_mutex);
-		list_for_each_safe(sp, snext, &clihost->lshd_wrdata) {
-			netmsg_wrdata = list_entry(sp, struct netmsg_data, ls_req);
-			list_del(&netmsg_wrdata->ls_req);
-			kmem_cache_free(clihost->slab_netmsg_data, netmsg_wrdata);
-		}
-		mutex_unlock(&clihost->lshd_wrdata_mutex);
-		printk(KERN_INFO"mempool:destory clienthost wrdata msg\n");
+		KER_DEBUG(KERN_INFO"mempool:destory clienthost handle thread\n");
 
 		list_del(&clihost->ls_rent);
 		kmem_cache_free(dev->slab_client_host, clihost);
 	}
 	mutex_unlock(&dev->lshd_rent_client_mutex);
-	printk(KERN_INFO"mempool:destory client list\n");
+	KER_DEBUG(KERN_INFO"mempool:destory client list\n");
 
 	//delete client, netmsg slab
 	if(dev->slab_client_host) {
 		kmem_cache_destroy(dev->slab_client_host);
 	}
-	if(dev->slab_netmsg_req) {
-		kmem_cache_destroy(dev->slab_netmsg_req);
+	KER_DEBUG(KERN_INFO"mempool:destory client slab\n");
+	//destory data listen socket
+	if(dev->data_listen_sock) {
+		sock_release(dev->data_listen_sock);
+		dev->data_listen_sock = NULL;
 	}
-	if(dev->slab_netmsg_data) {
-		kmem_cache_destroy(dev->slab_netmsg_data);
-	}
-	printk(KERN_INFO"mempool:destory client slab\n");
 	//destory listen socket thread
 	if(dev->listen_sock) {
 		sock_release(dev->listen_sock);
 		dev->listen_sock = NULL;
 	}
-	printk(KERN_INFO"mempool:destory listen thread\n");
+	KER_DEBUG(KERN_INFO"mempool:destory listen thread\n");
 	if(dev->ListenThread) {
 		kthread_stop(dev->ListenThread);
 		dev->ListenThread = NULL;
 	}
 	//delete sysfs file
 	delete_sysfs_file(dev->dev);
-	printk(KERN_INFO"mempool:destory sys file\n");
+	KER_DEBUG(KERN_INFO"mempool:destory sys file\n");
 	//delete dev
 	cdev_del(&dev->gd);
 	//delete sysfs dir
@@ -167,7 +140,7 @@ static int setup_device(struct mempool_dev *dev, dev_t devno) {
 	dev->gd.owner = THIS_MODULE;
 	err = cdev_add(&dev->gd, dev->devno, 1);
 	if(err) {
-		printk(KERN_NOTICE "Error %d adding mempool\n", err);
+		KER_DEBUG(KERN_NOTICE "Error %d adding mempool\n", err);
 		ret = KERERR_CREATE_DEVICE;
 		goto err_create_device;
 	}
@@ -177,7 +150,7 @@ static int setup_device(struct mempool_dev *dev, dev_t devno) {
 	//create sysfs file
 	ret = create_sysfs_file(dev->dev);
 	if(ret == KERERR_CREATE_FILE) {
-		printk(KERN_NOTICE"mempool:create sysfs file fail\n");
+		KER_DEBUG(KERN_NOTICE"mempool:create sysfs file fail\n");
 		ret = KERERR_CREATE_FILE;
 		goto err_sysfs_create;
 	}
@@ -186,23 +159,9 @@ static int setup_device(struct mempool_dev *dev, dev_t devno) {
 	dev->slab_client_host = kmem_cache_create("mempool_clihost",
 				sizeof(struct client_host), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
 	if(NULL == dev->slab_client_host) {
-		printk(KERN_NOTICE"mempool:create mempool_clihost slab fail\n");
+		KER_DEBUG(KERN_NOTICE"mempool:create mempool_clihost slab fail\n");
 		ret = KERERR_CREATE_SLAB;
 		goto err_clihost_slab;
-	}
-	dev->slab_netmsg_req = kmem_cache_create("mempool_netmsg_req",
-				sizeof(struct netmsg_req), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
-	if(NULL == dev->slab_netmsg_req) {
-		printk(KERN_NOTICE"mempool:create mempool_clihost slab fail\n");
-		ret = KERERR_CREATE_SLAB;
-		goto err_netmsg_req_slab;
-	}
-	dev->slab_netmsg_data = kmem_cache_create("mempool_netmsg_data",
-				sizeof(struct netmsg_data), sizeof(long), SLAB_HWCACHE_ALIGN, NULL);
-	if(NULL == dev->slab_netmsg_data) {
-		printk(KERN_NOTICE"mempool:create mempool_clihost slab fail\n");
-		ret = KERERR_CREATE_SLAB;
-		goto err_netmsg_data_slab;
 	}
 	//init mutex
 	mutex_init(&dev->lshd_rent_client_mutex);
@@ -218,19 +177,15 @@ static int setup_device(struct mempool_dev *dev, dev_t devno) {
 	//create listen socket thread
 	dev->ListenThread = kthread_create(mempool_listen_thread, (void *)dev, "mempool listen daemon");
 	if (IS_ERR(dev->ListenThread)) {
-		printk(KERN_ALERT "create recvmsg thread err, err=%ld\n", PTR_ERR(dev->ListenThread));
+		KER_DEBUG(KERN_ALERT "create thread err, err=%ld\n", PTR_ERR(dev->ListenThread));
 		ret = KERERR_CREATE_THREAD;
 		goto err_create_thread;
 	}
 	wake_up_process(dev->ListenThread);
-	printk(KERN_NOTICE"mempool:mempool_create\n");
+	KER_DEBUG(KERN_NOTICE"mempool:mempool_create\n");
 
 	return ret;
 err_create_thread:
-	kmem_cache_destroy(dev->slab_netmsg_data);
-err_netmsg_data_slab:
-	kmem_cache_destroy(dev->slab_netmsg_req);
-err_netmsg_req_slab:
 	kmem_cache_destroy(dev->slab_client_host);
 err_clihost_slab:
 err_sysfs_create:
@@ -252,7 +207,7 @@ static int __init mempool_init(void) {
 		mempool_minor = MINOR(devno);
 	}
 	if(mempool_major <= 0) {
-		printk(KERN_INFO"mempool:%s: unable to get major number\n", MEMPOOL_NAME);
+		KER_DEBUG(KERN_INFO"mempool:%s: unable to get major number\n", MEMPOOL_NAME);
 		return -EBUSY;
 	}
 
@@ -262,10 +217,10 @@ static int __init mempool_init(void) {
 	}
 	ret = setup_device(Devices, devno);
 	if(ret < KERERR_SUCCESS) {
-		printk(KERN_INFO"mempool: create dev fail\n");
+		KER_DEBUG(KERN_INFO"mempool: create dev fail\n");
 		goto err_setup_dev;
 	}
-	printk(KERN_NOTICE"mempool:mempool_init\n");
+	KER_DEBUG(KERN_NOTICE"mempool:mempool_init\n");
 	return 0;
 
 err_setup_dev:
@@ -278,7 +233,7 @@ static void mempool_exit(void) {
 	destory_device(Devices, 0);
 	unregister_chrdev_region(MKDEV(mempool_major, 0), 1);
 	kfree(Devices);
-	printk(KERN_NOTICE"mempool:mempool_exit\n");
+	KER_DEBUG(KERN_NOTICE"mempool:mempool_exit\n");
 }
 
 module_init(mempool_init);

@@ -24,8 +24,9 @@
 #define MAX_BLK_NUM_IN_MEMPOOL	(1UL << 3)
 
 #define SERHOST_LISTEN_PORT	8000
+#define DATA_PORT	50000
 
-#define SCHEDULE_TIME	0.5
+#define SCHEDULE_TIME 0.05
 
 #define TRUE	1
 #define FALSE	0

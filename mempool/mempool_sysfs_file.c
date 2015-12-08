@@ -81,7 +81,7 @@ static ssize_t serhost_cfg_store(struct device *dev, struct device_attribute *at
 	struct MsgSerOp * serop = NULL;
 
 	if(count != sizeof(struct MsgSerOp)) {
-		printk(KERN_NOTICE"mempool:%s:illegal input\n", __FUNCTION__);
+		KER_DEBUG(KERN_NOTICE"mempool:%s:illegal input\n", __FUNCTION__);
 		return 0;
 	}
 
@@ -92,7 +92,7 @@ static ssize_t serhost_cfg_store(struct device *dev, struct device_attribute *at
 		unsigned int nIndex = 0;
 		//add available block
 		case SERHOST_OP_ADD_BLK:
-			printk(KERN_NOTICE"mempool:add block called\n");
+			KER_DEBUG(KERN_NOTICE"mempool:add block called\n");
 			for(nIndex = 0, nCount = 0; (nIndex < MAX_BLK_NUM_IN_MEMPOOL) && (nCount < serop->info.addblk.block_num); nIndex++) {
 				if(!Devices->blk[nIndex].avail) {
 					Devices->blk[nIndex].blk_pages = alloc_pages(GFP_USER, BLK_SIZE_SHIFT-PAGE_SHIFT);
@@ -117,21 +117,21 @@ int create_sysfs_file(struct device *dev) {
 	}
 	ret = device_create_file(dev, &dev_attr_clihost_state);
 	if (ret) {
-		printk(KERN_NOTICE"mempool:create sysfs file clihost_state error: %d", ret);
+		KER_DEBUG(KERN_NOTICE"mempool:create sysfs file clihost_state error: %d", ret);
 		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_clihost_state;
 	}
 
 	ret = device_create_file(dev, &dev_attr_serhost_cfg);
 	if (ret) {
-		printk(KERN_NOTICE"mempool:create sysfs file serhost_cfg error: %d", ret);
+		KER_DEBUG(KERN_NOTICE"mempool:create sysfs file serhost_cfg error: %d", ret);
 		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_serhost_cfg;
 	}
 
 	ret = device_create_file(dev, &dev_attr_blk_state);
 	if (ret) {
-		printk(KERN_NOTICE"mempool:create sysfs file blk_state error: %d", ret);
+		KER_DEBUG(KERN_NOTICE"mempool:create sysfs file blk_state error: %d", ret);
 		ret = KERERR_CREATE_FILE;
 		goto err_sys_create_blk_state;
 	}
