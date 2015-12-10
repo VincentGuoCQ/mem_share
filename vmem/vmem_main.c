@@ -79,7 +79,7 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 		mutex_lock(&serhost->lshd_req_msg_mutex);
 		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
-		KER_DEBUG(KERN_INFO"add read msg in inuse server\n");
+		KER_DEBUG(KERN_INFO"add read msg in server\n");
 		while(1) {
 			schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 			mutex_lock(&Devices->lshd_read_mutex);
@@ -163,14 +163,14 @@ static ssize_t vmem_write(struct file *filp, const char __user *buf, size_t coun
 		mutex_lock(&serhost->lshd_req_msg_mutex);
 		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
-		KER_DEBUG(KERN_INFO"add write msg in inuse server\n");
+		KER_DEBUG(KERN_INFO"add write msg in server\n");
 
 		//post data to list
 		copy_from_user(msg_wrdata->data, buf, count);
 		mutex_lock(&serhost->lshd_wrdata_mutex);
 		list_add_tail(&msg_wrdata->ls_req, &serhost->lshd_wrdata);
 		mutex_unlock(&serhost->lshd_wrdata_mutex);
-		KER_DEBUG(KERN_INFO"add write data in inuse server\n");
+		KER_DEBUG(KERN_INFO"add write data in server\n");
 	}
 
 	KER_PRT(KERN_INFO"end to write:%ld\n", jiffies);
@@ -225,23 +225,14 @@ static void destory_device(struct vmem_dev *dev, int which) {
 		kmem_cache_free(dev->slab_netmsg_data, preaddata);
 	}
 	mutex_unlock(&dev->lshd_read_mutex);
-	KER_DEBUG(KERN_INFO"vmem:destory serverhost avail list\n");
-	//destory server host avail list
-	mutex_lock(&dev->lshd_avail_mutex);
-	list_for_each_safe(p, next, &dev->lshd_available) {
-		pserhost = list_entry(p, struct server_host, ls_available);
-		list_del(&pserhost->ls_available);
-		kmem_cache_free(dev->slab_server_host, pserhost);
-	}
-	mutex_unlock(&dev->lshd_avail_mutex);
-	KER_DEBUG(KERN_INFO"vmem:destory serverhost avail list\n");
+	KER_DEBUG(KERN_INFO"vmem:destory serverhost read block list\n");
 
-	//destory server host inuse list 
-	mutex_lock(&dev->lshd_inuse_mutex);
-	list_for_each_safe(p, next, &dev->lshd_inuse) {
+	//destory server host list 
+	mutex_lock(&dev->lshd_serhost_mutex);
+	list_for_each_safe(p, next, &dev->lshd_serhost) {
 		struct list_head *sp = NULL, *snext = NULL;
 		struct netmsg_req *netmsg_req = NULL;
-		pserhost = list_entry(p, struct server_host, ls_inuse);
+		pserhost = list_entry(p, struct server_host, ls_serhost);
 
 		mutex_lock(&pserhost->ptr_mutex);
 		if(pserhost->sock) {
@@ -253,19 +244,19 @@ static void destory_device(struct vmem_dev *dev, int which) {
 			pserhost->datasock = NULL;
 		}
 		mutex_unlock(&pserhost->ptr_mutex);
-		KER_DEBUG(KERN_INFO"vmem:destory serverhost inuse sock\n");
+		KER_DEBUG(KERN_INFO"vmem:destory serverhost sock\n");
 
 		if(pserhost->SerSendThread) {
 			kthread_stop(pserhost->SerSendThread);
 			pserhost->SerSendThread = NULL;
 		}
-		KER_DEBUG(KERN_INFO"vmem:destory serverhost inuse send thread\n");
+		KER_DEBUG(KERN_INFO"vmem:destory serverhost send thread\n");
 
 		if(pserhost->SerRecvThread) {
 			kthread_stop(pserhost->SerRecvThread);
 			pserhost->SerRecvThread = NULL;
 		}
-		KER_DEBUG(KERN_INFO"vmem:destory serverhost inuse recv thread\n");
+		KER_DEBUG(KERN_INFO"vmem:destory serverhost recv thread\n");
 
 		mutex_lock(&pserhost->lshd_req_msg_mutex);
 		list_for_each_safe(sp, snext, &pserhost->lshd_req_msg) {
@@ -275,11 +266,11 @@ static void destory_device(struct vmem_dev *dev, int which) {
 		}
 		mutex_unlock(&pserhost->lshd_req_msg_mutex);
 
-		list_del(&pserhost->ls_inuse);
+		list_del(&pserhost->ls_serhost);
 		kmem_cache_free(dev->slab_server_host, pserhost);
 	}
-	mutex_unlock(&dev->lshd_inuse_mutex);
-	KER_DEBUG(KERN_INFO"vmem:destory serverhost inuse list\n");
+	mutex_unlock(&dev->lshd_serhost_mutex);
+	KER_DEBUG(KERN_INFO"vmem:destory serverhost list\n");
 	//delete slab
 	if(dev->slab_server_host) {
 		kmem_cache_destroy(dev->slab_server_host);
@@ -304,8 +295,7 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	int ret = KERERR_SUCCESS, nIndex = 0;
 	memset(dev, 0, sizeof(struct vmem_dev));
 	//init list head
-	INIT_LIST_HEAD(&dev->lshd_available);
-	INIT_LIST_HEAD(&dev->lshd_inuse);
+	INIT_LIST_HEAD(&dev->lshd_serhost);
 	INIT_LIST_HEAD(&dev->lshd_read);
 
 	dev->devno = devno;
@@ -348,8 +338,7 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 		goto err_netmsg_data_slab;
 	}
 	//init mutex
-	mutex_init(&dev->lshd_avail_mutex);
-	mutex_init(&dev->lshd_inuse_mutex);
+	mutex_init(&dev->lshd_serhost_mutex);
 	mutex_init(&dev->lshd_read_mutex);
 	KER_DEBUG(KERN_NOTICE"vmem:vmem_create\n");
 
@@ -402,7 +391,7 @@ static int __init vmem_init(void) {
 		KER_DEBUG(KERN_WARNING"vmem:%s: unable to get major number\n", VMEM_NAME);
 		return -EBUSY;
 	}
-	Devices = (struct vmem_dev *)kmalloc(ndevices * sizeof(struct vmem_dev), GFP_KERNEL);
+	Devices = (struct vmem_dev *)kmalloc(sizeof(struct vmem_dev), GFP_KERNEL);
 	if(Devices == NULL) {
 		goto out_unregister;
 	}

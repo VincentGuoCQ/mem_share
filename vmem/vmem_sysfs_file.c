@@ -24,9 +24,16 @@ unsigned int state_to_str(struct cli_blk * blk) {
 	return 0;
 }
 
+int SerRecvThread(void *data);
+int SerSendThread(void *data);
+int vmem_serhost_init(struct server_host *serhost);
+
 void IP_convert(struct in_addr *ip, unsigned char *str, unsigned int buflen) {
 	snprintf(str, buflen, "%d.%d.%d.%d", ((unsigned char *)&(ip->s_addr))[0], ((unsigned char *)&(ip->s_addr))[1], ((unsigned char *)&(ip->s_addr))[2], ((unsigned char *)&(ip->s_addr))[3]);
 }
+
+int bind_to_device(struct socket *sock, char *ifname);
+int connect_to_addr(struct socket *sock, struct server_host *serhost, unsigned short port);
 
 //print server
 static ssize_t clihost_priser_show(struct device *dev, struct device_attribute *attr, char *buf) {
@@ -42,22 +49,14 @@ static ssize_t clihost_priser_show(struct device *dev, struct device_attribute *
 	out += sprintf(out, "Server Name\t\tIP Address\t\t Block Num\t\tState\n");
 	out += sprintf(out, "----------------------------------\n");
 
-	mutex_lock(&Devices->lshd_avail_mutex);
-	list_for_each(p, &Devices->lshd_available) {
-		ps = list_entry(p, struct server_host, ls_available);
+	mutex_lock(&Devices->lshd_serhost_mutex);
+	list_for_each(p, &Devices->lshd_serhost) {
+		ps = list_entry(p, struct server_host, ls_serhost);
 		IP_convert(&ps->host_addr.sin_addr, IPaddr, IP_ADDR_LEN);
-		out += sprintf(out, "%s\t\t%s\t\t%d\t\tavailable\n",
+		out += sprintf(out, "%s\t\t%s\t\t%d\t\tconnected\n",
 					ps->host_name, IPaddr, ps->block_available);
 	}
-	mutex_unlock(&Devices->lshd_avail_mutex);
-	mutex_lock(&Devices->lshd_inuse_mutex);
-	list_for_each(p, &Devices->lshd_inuse) {
-		ps = list_entry(p, struct server_host, ls_inuse);
-		IP_convert(&ps->host_addr.sin_addr, IPaddr, IP_ADDR_LEN);
-		out += sprintf(out, "%s\t\t%s\t\t%d\t\tinuse\n",
-					ps->host_name, IPaddr, ps->block_available);
-	}
-	mutex_unlock(&Devices->lshd_inuse_mutex);
+	mutex_unlock(&Devices->lshd_serhost_mutex);
 	return out - buf;
 }
 static DEVICE_ATTR_RO(clihost_priser);
@@ -98,6 +97,7 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 	struct server_host *serhostnew = NULL;
 	struct list_head *p = NULL, *next = NULL;
 	char IPaddr[IP_ADDR_LEN];
+	int ret = count;
 
 	if(count != sizeof(struct MsgCliOp)) {
 		KER_DEBUG(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
@@ -118,43 +118,38 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 			memcpy(&serhostnew->host_addr.sin_addr, &cliop->info.addser.host_addr, sizeof(struct in_addr));
 			memcpy(&serhostnew->block_available, &cliop->info.addser.block_num, sizeof(unsigned int));
 			//search for existing
-			mutex_lock(&Devices->lshd_inuse_mutex);
-			list_for_each(p, &Devices->lshd_inuse) {
-				serhost = list_entry(p, struct server_host, ls_inuse);
+			mutex_lock(&Devices->lshd_serhost_mutex);
+			list_for_each(p, &Devices->lshd_serhost) {
+				serhost = list_entry(p, struct server_host, ls_serhost);
 				if(!memcmp(&serhostnew->host_addr.sin_addr.s_addr,
 								&serhost->host_addr.sin_addr.s_addr, sizeof(struct in_addr))) {
 					KER_DEBUG(KERN_INFO"vmem:server add:same server\n");
 					break;
 				}
 			}
-			mutex_unlock(&Devices->lshd_inuse_mutex);
-			mutex_lock(&Devices->lshd_avail_mutex);
-			list_for_each(p, &Devices->lshd_available) {
-				serhost = list_entry(p, struct server_host, ls_available);
-				if(!memcmp(&serhostnew->host_addr.sin_addr.s_addr,
-								&serhost->host_addr.sin_addr.s_addr, sizeof(struct in_addr))) {
-					KER_DEBUG(KERN_INFO"vmem:server add:same server\n");
-					break;
-				}
-			}
-			mutex_unlock(&Devices->lshd_avail_mutex);
+			mutex_unlock(&Devices->lshd_serhost_mutex);
 
 			//add to list
-			if(p == &Devices->lshd_available) {
-				mutex_init(&serhostnew->ptr_mutex);
-				mutex_init(&serhostnew->lshd_req_msg_mutex);
-				mutex_init(&serhostnew->lshd_wrdata_mutex);
-				INIT_LIST_HEAD(&serhostnew->lshd_req_msg);
-				INIT_LIST_HEAD(&serhostnew->lshd_wrdata);
-				serhostnew->slab_netmsg_req = Devices->slab_netmsg_req;
-				serhostnew->slab_netmsg_data = Devices->slab_netmsg_data;
-				mutex_lock(&Devices->lshd_avail_mutex);
-				list_add_tail(&serhostnew->ls_available, &Devices->lshd_available);
-				mutex_unlock(&Devices->lshd_avail_mutex);
+			if(p == &Devices->lshd_serhost) {
+				//if tcp to server established, add server to list
+				if(vmem_serhost_init(serhostnew) == KERERR_SUCCESS) {
+					KER_DEBUG(KERN_INFO"add server to list\n");
+					mutex_lock(&Devices->lshd_serhost_mutex);
+					list_add_tail(&serhostnew->ls_serhost, &Devices->lshd_serhost);
+					mutex_unlock(&Devices->lshd_serhost_mutex);
+				}
+				//if tcp to server not established, delete server
+				else {
+					KER_DEBUG(KERN_INFO"tcp connection not establist\n");
+					kmem_cache_free(Devices->slab_server_host, serhostnew);
+					ret = ERR_CLI_CONN_REFUSED;
+					goto err_conn_refused; 
+				}
 
 			}
 			else {
 				kmem_cache_free(Devices->slab_server_host, serhostnew);
+				ret = ERR_CLI_SER_EXIST;
 				goto err_ser_exist;
 			}
 			break;
@@ -166,29 +161,16 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 			KER_DEBUG(KERN_INFO"addr:%s", IPaddr);
 
 			//search for existing
-			mutex_lock(&Devices->lshd_inuse_mutex);
-			list_for_each(p, &Devices->lshd_inuse) {
-				serhost = list_entry(p, struct server_host, ls_inuse);
+			mutex_lock(&Devices->lshd_serhost_mutex);
+			list_for_each(p, &Devices->lshd_serhost) {
+				serhost = list_entry(p, struct server_host, ls_serhost);
 				if(!memcmp(&serhost->host_addr.sin_addr.s_addr,
 								&cliop->info.modser.host_addr.s_addr, sizeof(struct in_addr))) {
 					serhost->block_available = cliop->info.modser.block_num;
 					break;
 				}
 			}
-			mutex_unlock(&Devices->lshd_inuse_mutex);
-			if(p != &Devices->lshd_inuse) {
-				break;
-			}
-			mutex_lock(&Devices->lshd_avail_mutex);
-			list_for_each(p, &Devices->lshd_available) {
-				serhost = list_entry(p, struct server_host, ls_available);
-				if(!memcmp(&serhost->host_addr.sin_addr.s_addr,
-								&cliop->info.modser.host_addr.s_addr, sizeof(struct in_addr))) {
-					serhost->block_available = cliop->info.modser.block_num;
-					break;
-				}
-			}
-			mutex_unlock(&Devices->lshd_avail_mutex);
+			mutex_unlock(&Devices->lshd_serhost_mutex);
 			break;
 		}
 		//map local memory
@@ -216,26 +198,13 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 			}
 			break;
 		}
-		//delete server host available
-		case CLIHOST_OP_DEL_SERHOST_AVAIL: {
-			mutex_lock(&Devices->lshd_avail_mutex);
-			list_for_each_safe(p, next, &Devices->lshd_available) {
-				serhost = list_entry(p, struct server_host, ls_available);
-				list_del(&serhost->ls_available);
-				kmem_cache_free(Devices->slab_server_host, serhost);
-			}
-			mutex_unlock(&Devices->lshd_avail_mutex);
-			KER_DEBUG(KERN_INFO"vmem:delete serverhost avail list\n");
-			break;
-		}
 		//delete server host inuse
 		case CLIHOST_OP_DEL_SERHOST_INUSE: {
-			mutex_lock(&Devices->lshd_inuse_mutex);
-			list_for_each_safe(p, next, &Devices->lshd_inuse) {
+			mutex_lock(&Devices->lshd_serhost_mutex);
+			list_for_each_safe(p, next, &Devices->lshd_serhost) {
 				struct list_head *sp = NULL, *snext = NULL;
 				struct netmsg_req *netmsg_req = NULL;
-				serhost = list_entry(p, struct server_host, ls_inuse);
-
+				serhost = list_entry(p, struct server_host, ls_serhost);
 				mutex_lock(&serhost->lshd_req_msg_mutex);
 				list_for_each_safe(sp, snext, &serhost->lshd_req_msg) {
 					netmsg_req = list_entry(sp, struct netmsg_req, ls_reqmsg);
@@ -251,24 +220,25 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 					serhost->sock = NULL;
 				}
 				mutex_unlock(&serhost->ptr_mutex);
-				KER_DEBUG(KERN_INFO"vmem:delete serverhost inuse sock\n");
+				KER_DEBUG(KERN_INFO"vmem:delete serverhost sock\n");
 				if(serhost->SerSendThread) {
 					kthread_stop(serhost->SerSendThread);
 					serhost->SerSendThread = NULL;
 				}
-				KER_DEBUG(KERN_INFO"vmem:delete serverhost inuse send thread\n");
+				KER_DEBUG(KERN_INFO"vmem:delete serverhost send thread\n");
 
-				list_del(&serhost->ls_inuse);
+				list_del(&serhost->ls_serhost);
 				kmem_cache_free(Devices->slab_server_host, serhost);
 			}
-			mutex_unlock(&Devices->lshd_inuse_mutex);
-			KER_DEBUG(KERN_INFO"vmem:delete serverhost inuse list\n");
+			mutex_unlock(&Devices->lshd_serhost_mutex);
+			KER_DEBUG(KERN_INFO"vmem:delete serverhost list\n");
 			break;
 		}
 	}
 
 	kfree(cliop);
 	return count;
+err_conn_refused:
 err_ser_exist:
 	kfree(cliop);
 	return ERR_VMEM_HOST_EXIST;
@@ -284,6 +254,7 @@ static ssize_t clihost_alloc_store(struct device *dev, struct device_attribute *
 	unsigned int nIndex = 0;
 	unsigned int nCount = 0;
 	unsigned int nPageIndex = 0;
+    int ret = count;
 
 	if(count != sizeof(struct MsgMemAlloc)) {
 		KER_DEBUG(KERN_INFO"vmem:%s:illegal input\n", __FUNCTION__);
@@ -317,7 +288,7 @@ static ssize_t clihost_alloc_store(struct device *dev, struct device_attribute *
 	}
 	Devices->vpage_alloc->vpagenum = nCount;
 	mutex_unlock(&Devices->vpage_alloc->access_mutex);
-	return count;
+	return ret;
 }
 static ssize_t clihost_alloc_show(struct device *dev, struct device_attribute *attr, char *buf) {
 	char *out = buf;

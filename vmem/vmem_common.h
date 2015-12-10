@@ -1,6 +1,6 @@
 #ifndef	VMEM_COMMON_H
 #define VMEM_COMMON_H
-#define DEBUG
+//#define DEBUG
 
 #ifdef DEBUG
 #define KER_DEBUG(STR, args...)	printk(STR, ##args)
@@ -16,22 +16,6 @@ static int vmem_minor= 0;
 module_param(vmem_major, int, 0);
 module_param(vmem_minor, int, 0);
 
-static unsigned int hardsect_size = VPAGE_SIZE;
-static unsigned int nsectors = (1UL << (BLK_SIZE_SHIFT - VPAGE_SIZE_SHIFT));
-static unsigned int ndevices = 1;
-
-module_param(hardsect_size, int, 0);
-module_param(nsectors, int, 0);
-module_param(ndevices, int, 0);
-
-
-#define RM_SIMPLE 0
-#define	RM_FULL 1
-#define	RM_NOQUEUE 2
-
-static int request_mode = RM_SIMPLE;
-module_param(request_mode, int, RM_SIMPLE);
-
 
 //the period for re-calculate the precent of free pages, in seconds
 #define CALCULATE_PERIOD 5
@@ -43,8 +27,7 @@ module_param(request_mode, int, RM_SIMPLE);
 #define VMEM_IF_NAME "eth0"
 
 struct server_host {
-	struct list_head ls_available;
-	struct list_head ls_inuse;
+	struct list_head ls_serhost;
 	char host_name[HOST_NAME_LEN];
 	struct sockaddr_in host_addr;
 	struct sockaddr_in host_data_addr;
@@ -108,10 +91,8 @@ struct vmem_dev {
 	int user;
 	unsigned int size;
 
-	struct list_head lshd_available;
-	struct mutex lshd_avail_mutex;
-	struct list_head lshd_inuse;
-	struct mutex lshd_inuse_mutex;
+	struct list_head lshd_serhost;
+	struct mutex lshd_serhost_mutex;
 	struct list_head lshd_read;
 	struct mutex lshd_read_mutex;
 
