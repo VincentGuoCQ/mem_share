@@ -36,7 +36,6 @@ int bind_to_device(struct socket *sock, char *ifname) {
 int connect_to_addr(struct socket *sock, struct server_host *serhost, unsigned short port) {
     int ret = KERERR_SUCCESS;
     serhost->host_addr.sin_family = AF_INET;
-    //serhost->host_addr.sin_addr.s_addr = cpu_to_be32(dstip);
     serhost->host_addr.sin_port = cpu_to_be16(port);
     ret = sock->ops->connect(sock, (struct sockaddr*)&serhost->host_addr,
             sizeof(struct sockaddr), 0);
@@ -279,7 +278,7 @@ int vmem_serhost_init(struct server_host *serhost) {
     }
 	kernel_getpeername(serhost->sock, (struct sockaddr *)&serhost->host_addr, &sockaddrlen);
 	kernel_getpeername(serhost->datasock, (struct sockaddr *)&serhost->host_data_addr, &sockaddrlen);
-
+	//init mutex, list_head and slab
 	mutex_init(&serhost->ptr_mutex);
 	mutex_init(&serhost->lshd_req_msg_mutex);
 	mutex_init(&serhost->lshd_wrdata_mutex);
@@ -370,7 +369,7 @@ int vmem_daemon(void *data) {
 		}
 		//memory below lower limit
 		if(sumpage <= (unsigned int)(((sumblk * VPAGE_NUM_IN_BLK) >> 2))) {
-			KER_DEBUG(KERN_INFO"over lower limit");
+			KER_DEBUG(KERN_INFO"over lower limit\n");
 			continue;
 		}
 	}

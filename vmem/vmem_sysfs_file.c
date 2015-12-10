@@ -24,8 +24,6 @@ unsigned int state_to_str(struct cli_blk * blk) {
 	return 0;
 }
 
-int SerRecvThread(void *data);
-int SerSendThread(void *data);
 int vmem_serhost_init(struct server_host *serhost);
 
 void IP_convert(struct in_addr *ip, unsigned char *str, unsigned int buflen) {

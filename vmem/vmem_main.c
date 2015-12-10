@@ -353,10 +353,6 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	memset(&vpage_alloc, 0 ,sizeof(struct vpage_alloc));
 	mutex_init(&vpage_alloc.access_mutex);
 	dev->vpage_alloc = &vpage_alloc;
-	//init vpage read
-//	memset(&vpage_read, 0 ,sizeof(struct vpage_read));
-//	mutex_init(&vpage_read.access_mutex);
-//	dev->vpage_read = &vpage_read;
 	//init daemon thread
 	dev->DaemonThread = kthread_create(vmem_daemon, (void *)dev, "vmem daemon");
 	wake_up_process(dev->DaemonThread);
@@ -415,5 +411,5 @@ static void vmem_exit(void) {
 module_init(vmem_init);
 module_exit(vmem_exit);
 
-MODULE_AUTHOR("gpf");
+MODULE_AUTHOR("VincentGuo");
 MODULE_LICENSE("GPL");
