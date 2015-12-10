@@ -8,14 +8,6 @@
 
 struct mempool_dev *Devices = NULL;
 
-//const struct inet_protos vmem_protocol = {
-//	.early_demux = vmem_early_demux, 
-//	.hander		= vmem_rx,
-//	.err_hander = vmem_err,
-//	.no_policy	= 1,
-//	.netns_ok	= 1,
-//};
-
 int mempool_open(struct inode *inode, struct file *filp) {
 	filp->private_data = Devices;
 	return 0;
@@ -27,13 +19,13 @@ int mempool_release(struct inode *inode, struct file *filp) {
 
 static ssize_t mempool_read(struct file *filp, char __user *buf, size_t count, loff_t *ppos) {
 	int ret = 0;
-	struct mempool_dev *dev =filp->private_data;
+	//struct mempool_dev *dev =filp->private_data;
 	return ret;
 }
 
 static ssize_t mempool_write(struct file *filp, const char __user *buf, size_t count, loff_t *ppos) {
 	int ret = 0;
-	struct mempool_dev *dev =filp->private_data;
+	//struct mempool_dev *dev =filp->private_data;
 	return ret;
 }
 
@@ -211,7 +203,7 @@ static int __init mempool_init(void) {
 		return -EBUSY;
 	}
 
-	Devices = (struct mempool_dev *)kmalloc(ndevices * sizeof(struct mempool_dev), GFP_KERNEL);
+	Devices = (struct mempool_dev *)kmalloc(sizeof(struct mempool_dev), GFP_KERNEL);
 	if(Devices == NULL) {
 		goto err_kmalloc_dev;
 	}
@@ -239,5 +231,5 @@ static void mempool_exit(void) {
 module_init(mempool_init);
 module_exit(mempool_exit);
 
-MODULE_AUTHOR("gpf");
+MODULE_AUTHOR("VincentGuo");
 MODULE_LICENSE("GPL");

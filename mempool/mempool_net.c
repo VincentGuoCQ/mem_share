@@ -31,7 +31,7 @@ static int bind_to_device(struct socket *sock, char *ifname, unsigned short port
 }
 
 static int CliRecvThread(void *data) {
-    struct kvec iov;
+    struct kvec recviov, recvdataiov, sendiov, senddataiov;
     struct client_host *clihost = (struct client_host *)data;
     struct msghdr recvmsg, sendmsg, senddatamsg, recvdatamsg;
 	struct netmsg_req *msg_req = (struct netmsg_req *)kmalloc(sizeof(struct netmsg_req), GFP_USER);
@@ -39,6 +39,29 @@ static int CliRecvThread(void *data) {
 	struct netmsg_rpy *msg_rpy = (struct netmsg_rpy *)kmalloc(sizeof(struct netmsg_rpy), GFP_USER);
 	struct netmsg_data *msg_rddata = (struct netmsg_data *)kmalloc(sizeof(struct netmsg_data), GFP_USER);
     int len = 0;
+
+	memset(&recvmsg, 0, sizeof(struct msghdr));
+	memset(&recvdatamsg, 0, sizeof(struct msghdr));
+	memset(&sendmsg, 0, sizeof(struct msghdr));
+	memset(&senddatamsg, 0, sizeof(struct msghdr));
+
+	sendmsg.msg_name = (void *)&clihost->host_addr;
+	sendmsg.msg_namelen = sizeof(struct sockaddr_in);
+	senddatamsg.msg_name = (void *)&clihost->host_data_addr;
+	senddatamsg.msg_namelen = sizeof(struct sockaddr_in);
+
+	memset(&recviov, 0, sizeof(struct kvec));
+	memset(&recvdataiov, 0, sizeof(struct kvec));
+	memset(&sendiov, 0, sizeof(struct kvec));
+	memset(&senddataiov, 0, sizeof(struct kvec));
+    recviov.iov_base = (void *)msg_req;
+    recviov.iov_len = sizeof(struct netmsg_req);
+	sendiov.iov_base = (void *)msg_rpy;
+	sendiov.iov_len = sizeof(struct netmsg_rpy);
+	recvdataiov.iov_base = (void *)msg_wrdata;
+	recvdataiov.iov_len = sizeof(struct netmsg_data);
+	senddataiov.iov_base = (void *)msg_rddata;
+	senddataiov.iov_len = sizeof(struct netmsg_data);
 
     while (!kthread_should_stop()) {
         schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
@@ -51,15 +74,7 @@ static int CliRecvThread(void *data) {
 		}
 		mutex_unlock(&clihost->ptr_mutex);
 
-		recvmsg.msg_name = NULL;
-		recvmsg.msg_namelen = 0;
-		recvmsg.msg_control = NULL;
-		recvmsg.msg_controllen = 0;
-		recvmsg.msg_flags = 0;
-        iov.iov_base = (void *)msg_req;
-        iov.iov_len = sizeof(struct netmsg_req);
-
-		len = kernel_recvmsg(clihost->sock, &recvmsg, &iov, 1, 
+		len = kernel_recvmsg(clihost->sock, &recvmsg, &recviov, 1, 
 					sizeof(struct netmsg_req), 0);
         KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_recvmsg en=%d\n",len);
         //close of client
@@ -87,6 +102,7 @@ static int CliRecvThread(void *data) {
 					if(Devices->blk[nIndex].avail && !Devices->blk[nIndex].inuse) {
 						msg_rpy->info.rpyblk.blkinfo[count].remoteIndex = nIndex;
 						msg_rpy->info.rpyblk.blkinfo[count].remoteaddr = (unsigned long)Devices->blk[nIndex].blk_addr;
+		sendmsg.msg_namelen = sizeof(struct sockaddr_in);
 						Devices->blk[nIndex].inuse = TRUE;
 						count++;
 					}
@@ -106,16 +122,7 @@ static int CliRecvThread(void *data) {
 				nBlkIndex = msg_req->info.req_write.remoteIndex;
 				nPageIndex = msg_req->info.req_write.pageIndex;
 
-				iov.iov_base = (void *)msg_wrdata;
-				iov.iov_len = sizeof(struct netmsg_data);
-
-				recvdatamsg.msg_name = NULL;
-				recvdatamsg.msg_namelen = 0;
-				recvdatamsg.msg_control = NULL;
-				recvdatamsg.msg_controllen = 0;
-				recvdatamsg.msg_flags = 0;
-
-				len = kernel_recvmsg(clihost->datasock, &recvmsg, &iov, 1, sizeof(struct netmsg_data), 0);
+				len = kernel_recvmsg(clihost->datasock, &recvmsg, &recvdataiov, 1, sizeof(struct netmsg_data), 0);
 				if (len < 0 || len != sizeof(struct netmsg_data)) {
 					KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_recvmsg err, len=%d, buffer=%ld\n",
 					        len, sizeof(struct netmsg_req));
@@ -149,16 +156,8 @@ static int CliRecvThread(void *data) {
 
 				memcpy(msg_rddata->data, Devices->blk[nBlkIndex].blk_addr + nPageIndex * VPAGE_SIZE,
 							VPAGE_SIZE);
-				iov.iov_base = (void *)msg_rddata;
-				iov.iov_len = sizeof(struct netmsg_data);
 
-				senddatamsg.msg_name = (void *)&clihost->host_data_addr;
-				senddatamsg.msg_namelen = sizeof(struct sockaddr_in);
-				senddatamsg.msg_control = NULL;
-				senddatamsg.msg_controllen = 0;
-				senddatamsg.msg_flags = 0;
-
-				len = kernel_sendmsg(clihost->datasock, &senddatamsg, &iov, 1, sizeof(struct netmsg_data));
+				len = kernel_sendmsg(clihost->datasock, &senddatamsg, &senddataiov, 1, sizeof(struct netmsg_data));
 				if (len < 0 || len != sizeof(struct netmsg_data)) {
 					KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_sendmsg err, len=%d, buffer=%ld\n",
 					        len, sizeof(struct netmsg_req));
@@ -171,14 +170,8 @@ static int CliRecvThread(void *data) {
 			default:
 				continue;
 		}
-		sendmsg.msg_name = (void *)&clihost->host_addr;
-		sendmsg.msg_namelen = sizeof(struct sockaddr_in);
-		sendmsg.msg_control = NULL;
-		sendmsg.msg_controllen = 0;
-		sendmsg.msg_flags = 0;
-		iov.iov_base = (void *)msg_rpy;
-		iov.iov_len = sizeof(struct netmsg_rpy);
-		len = kernel_sendmsg(clihost->sock, &sendmsg, &iov, 1, sizeof(struct netmsg_rpy));
+
+		len = kernel_sendmsg(clihost->sock, &sendmsg, &sendiov, 1, sizeof(struct netmsg_rpy));
 
 		if(len != sizeof(struct netmsg_rpy)) {
 			KER_DEBUG(KERN_INFO"kernel_sendmsg err, len=%d, buffer=%ld\n",

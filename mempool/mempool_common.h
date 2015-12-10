@@ -16,14 +16,6 @@ static int mempool_minor= 0;
 module_param(mempool_major, int, 0);
 module_param(mempool_minor, int, 0);
 
-static unsigned int hardsect_size = VPAGE_SIZE;
-static unsigned int nsectors = (1UL << (BLK_SIZE_SHIFT - VPAGE_SIZE_SHIFT));
-static unsigned int ndevices = 1;
-
-module_param(hardsect_size, int, 0);
-module_param(nsectors, int, 0);
-module_param(ndevices, int, 0);
-
 #define LISTEN_SCHEDULE_TIME 1
 
 #define LISTEM_MAX_QUEUE 5
@@ -58,7 +50,6 @@ struct client_host {
 #define MEMPOOL_STATE_CLOSED 2
 
 struct mempool_dev {
-	struct request_queue *queue;
 	struct cdev gd;
 	struct class *mempool_class;
 	struct device *dev;
