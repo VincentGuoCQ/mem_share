@@ -50,7 +50,7 @@ int SerRecvThread(void *data) {
     struct kvec iov;
     struct server_host *serhost = (struct server_host *)data;
 	struct msghdr recvmsg, recvdatamsg;
-	struct netmsg_rpy *msg_rpy = (struct netmsg_rpy *)kmalloc(sizeof(struct netmsg_rpy), GFP_USER);
+	struct netmsg_rpy msg_rpy;
 	struct netmsg_data *msg_rddata = NULL;
 	int len = 0;
 	if(!Devices) {
@@ -59,43 +59,41 @@ int SerRecvThread(void *data) {
 	memset(&recvmsg, 0, sizeof(struct msghdr));
 	memset(&recvdatamsg, 0, sizeof(struct msghdr));
 	while(!kthread_should_stop()) {
-		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
+		//schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 		mutex_lock(&serhost->ptr_mutex);
-		if(!serhost->sock) {
+		if(serhost->state == CLIHOST_STATE_CLOSED || !serhost->sock) {
 			mutex_unlock(&serhost->ptr_mutex);
 			break;
 		}
 		mutex_unlock(&serhost->ptr_mutex);
-		memset(msg_rpy, 0, sizeof(struct netmsg_rpy));
+		memset(&msg_rpy, 0, sizeof(struct netmsg_rpy));
 
-		iov.iov_base = (void *)msg_rpy;
-		iov.iov_len = sizeof(struct netmsg_rpy);
+		iov.iov_base = (void *)&msg_rpy.info;
+		iov.iov_len = sizeof(struct rpy_info);
 
 		len = kernel_recvmsg(serhost->sock, &recvmsg, &iov, 1,
-					sizeof(struct netmsg_rpy), MSG_DONTWAIT);
+					sizeof(struct rpy_info), MSG_WAITFORONE);
 		//close of client
 		if(len == 0) {
 			break;
 		}
-		if(len < 0 || len != sizeof(struct netmsg_rpy)) {
+		if(len < 0 || len != sizeof(struct rpy_info)) {
 			if(len == -ECONNREFUSED) {
 				KER_DEBUG(KERN_INFO"vmem thread: recvice err");
 			}
 			continue;
 		}
-		KER_DEBUG(KERN_INFO"vmem thread: recvice netmsg_rpy:%d", msg_rpy->msgID);
-		switch(msg_rpy->msgID) {
+		KER_DEBUG(KERN_INFO"vmem thread: recvice netmsg_rpy:%d", msg_rpy.info.msgID);
+		switch(msg_rpy.info.msgID) {
 			//alloc block
 			case NETMSG_SER_REPLY_ALLOC_BLK:{
 				unsigned int  nIndex = 0, count = 0;
 				KER_DEBUG(KERN_INFO"vmem thread: recvice rpy: alloc blk");
 				for(nIndex = 0, count = 0; nIndex < BLK_NUM_MAX &&
-							count < msg_rpy->info.rpyblk.blk_alloc; nIndex++) {
+							count < msg_rpy.info.data.rpyblk.blk_alloc; nIndex++) {
 					if(FALSE == Devices->addr_entry[nIndex].inuse) {
 						Devices->addr_entry[nIndex].entry.vmem.blk_remote_index =
-							msg_rpy->info.rpyblk.blkinfo[count].remoteIndex;
-						Devices->addr_entry[nIndex].entry.vmem.blk_remote_addr = 
-							msg_rpy->info.rpyblk.blkinfo[count].remoteaddr;
+							msg_rpy.info.data.rpyblk.blkinfo[count].remoteIndex;
 						Devices->addr_entry[nIndex].entry.vmem.blk_size = BLK_SIZE; 
 						Devices->addr_entry[nIndex].entry.vmem.serhost = serhost;
 						Devices->addr_entry[nIndex].entry.vmem.inuse = TRUE;
@@ -105,39 +103,39 @@ int SerRecvThread(void *data) {
 					}
 				}
 				serhost->block_inuse += count;
-				serhost->block_available = msg_rpy->info.rpyblk.blk_rest_available;
+				serhost->block_available = msg_rpy.info.data.rpyblk.blk_rest_available;
 				break;
 			}
 			//read page
 			case NETMSG_SER_REPLY_READ: {
 				msg_rddata = (struct netmsg_data *)kmem_cache_alloc(serhost->slab_netmsg_data, GFP_USER);
 				memset(msg_rddata, 0, sizeof(struct netmsg_data));
-				iov.iov_base = (void *)msg_rddata;
-				iov.iov_len = sizeof(struct netmsg_data);
+				iov.iov_base = (void *)&msg_rddata->info;
+				iov.iov_len = sizeof(struct data_info);
 				KER_DEBUG(KERN_INFO"vmem thread: recvice rpy: read page");
 
 				len = kernel_recvmsg(serhost->datasock, &recvdatamsg, &iov, 1,
-							sizeof(struct netmsg_data), 0);
+							sizeof(struct data_info), 0);
 				if(len == 0) {
 					break;
 				}
-				if(len < 0 || len != sizeof(struct netmsg_data)) {
+				if(len < 0 || len != sizeof(struct data_info)) {
 					if(len == -ECONNREFUSED) {
 						KER_DEBUG(KERN_INFO"vmem thread: recvice err");
 					}
 					continue;
 				}
-				msg_rddata->vpageaddr = msg_rpy->info.rpy_read.vpageaddr;
+				msg_rddata->info.vpageaddr = msg_rpy.info.data.rpy_read.vpageaddr;
 				KER_DEBUG(KERN_INFO"vmem thread: recvice read data len:%d", len);
 				mutex_lock(&Devices->lshd_read_mutex);
 				list_add_tail(&msg_rddata->ls_req, &Devices->lshd_read);
 				mutex_unlock(&Devices->lshd_read_mutex);
+				up(&Devices->read_semphore);
 				break;
 			}
 		}
 	}
 err_device_ptr:
-	kfree(msg_rpy);
 	while(!kthread_should_stop()) {
 		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 	}
@@ -162,14 +160,14 @@ int SerSendThread(void *data) {
 	senddatamsg.msg_namelen = sizeof(struct sockaddr_in);
 
     while (!kthread_should_stop()) {
-        schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 		mutex_lock(&serhost->ptr_mutex);
-		if(!serhost->sock) {
+		if(serhost->state == CLIHOST_STATE_CLOSED || !serhost->sock) {
 			mutex_unlock(&serhost->ptr_mutex);
 			break;
 		}
 		mutex_unlock(&serhost->ptr_mutex);
 		msg_req = NULL;
+		down(&serhost->send_sem);
 		mutex_lock(&serhost->lshd_req_msg_mutex);
 		list_for_each_safe(p, next, &serhost->lshd_req_msg) {
 			msg_req = list_entry(p, struct netmsg_req, ls_reqmsg);
@@ -177,15 +175,15 @@ int SerSendThread(void *data) {
 		}
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
 		if(!msg_req) {
-			continue;
+			break;
 		}
 
-        iov.iov_base = (void *)msg_req;
-        iov.iov_len = sizeof(struct netmsg_req);
-        len = kernel_sendmsg(serhost->sock, &sendmsg, &iov, 1, sizeof(struct netmsg_req));
-        if (len != sizeof(struct netmsg_req)) {
+        iov.iov_base = (void *)&msg_req->info;
+        iov.iov_len = sizeof(struct req_info);
+        len = kernel_sendmsg(serhost->sock, &sendmsg, &iov, 1, sizeof(struct req_info));
+        if (len != sizeof(struct req_info)) {
             KER_DEBUG(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%ld\n",
-                    len, sizeof(struct netmsg_req));
+                    len, sizeof(struct req_info));
             if (len == -ECONNREFUSED) {
                 KER_DEBUG(KERN_ALERT "Receive Port Unreachable packet!\n");
             }
@@ -193,7 +191,7 @@ int SerSendThread(void *data) {
         }
         KER_DEBUG(KERN_ALERT "kernel_sendmsg: len=%d\n", len);
 		//if request is write
-		if(msg_req->msgID == NETMSG_CLI_REQUEST_WRITE) {
+		if(msg_req->info.msgID == NETMSG_CLI_REQUEST_WRITE) {
 			msg_wrdata = NULL;
 			mutex_lock(&serhost->lshd_wrdata_mutex);
 			list_for_each_safe(pd, dnext, &serhost->lshd_wrdata) {
@@ -202,12 +200,12 @@ int SerSendThread(void *data) {
 			}
 			mutex_unlock(&serhost->lshd_wrdata_mutex);
 			if(msg_wrdata) {
-				iov.iov_base = (void *)msg_wrdata;
-				iov.iov_len = sizeof(struct netmsg_data);
-				len = kernel_sendmsg(serhost->datasock, &senddatamsg, &iov, 1, sizeof(struct netmsg_data));
-				if (len != sizeof(struct netmsg_data)) {
+				iov.iov_base = (void *)&msg_wrdata->info;
+				iov.iov_len = sizeof(struct data_info);
+				len = kernel_sendmsg(serhost->datasock, &senddatamsg, &iov, 1, sizeof(struct data_info));
+				if (len != sizeof(struct data_info)) {
 					KER_DEBUG(KERN_ALERT "kernel_sendmsg err, len=%d, buffer=%ld\n",
-								len, sizeof(struct netmsg_data));
+								len, sizeof(struct data_info));
 					if (len == -ECONNREFUSED) {
 						KER_DEBUG(KERN_ALERT "Receive Port Unreachable packet!\n");
 					}
@@ -225,6 +223,12 @@ int SerSendThread(void *data) {
 		kmem_cache_free(serhost->slab_netmsg_req, msg_req);
 
     }
+	if(serhost->sock) {
+		sock_release(serhost->sock);
+	}
+	if(serhost->datasock) {
+		sock_release(serhost->datasock);
+	}
 	while(!kthread_should_stop()) {
 		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
 	}
@@ -286,6 +290,8 @@ int vmem_serhost_init(struct server_host *serhost) {
 	INIT_LIST_HEAD(&serhost->lshd_wrdata);
 	serhost->slab_netmsg_req = Devices->slab_netmsg_req;
 	serhost->slab_netmsg_data = Devices->slab_netmsg_data;
+	serhost->state = CLIHOST_STATE_CONNECTED;
+	sema_init(&serhost->send_sem, 0);
 	//create server send thread
 	serhost->SerSendThread = kthread_run(SerSendThread, (void *)serhost, "Server Send thread");
     if (IS_ERR(serhost->SerSendThread)) {
@@ -358,12 +364,13 @@ int vmem_daemon(void *data) {
 				//find a available existing server
 				msg_req = (struct netmsg_req *)kmem_cache_alloc(serhost->slab_netmsg_req, GFP_USER);
 				memset((void *)msg_req, 0, sizeof(struct netmsg_req));
-				msg_req->msgID = NETMSG_CLI_REQUEST_ALLOC_BLK;
-				msg_req->info.req_alloc_blk.blknum = 1;
+				msg_req->info.msgID = NETMSG_CLI_REQUEST_ALLOC_BLK;
+				msg_req->info.data.req_alloc_blk.blknum = 1;
 				mutex_lock(&serhost->lshd_req_msg_mutex);
 				list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
 				KER_DEBUG(KERN_INFO"add msg in server\n");
 				mutex_unlock(&serhost->lshd_req_msg_mutex);
+				up(&serhost->send_sem);
 			}
 			continue;
 		}

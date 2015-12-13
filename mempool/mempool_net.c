@@ -158,8 +158,8 @@ static int CliRecvThread(void *data) {
 				senddatamsg.msg_controllen = 0;
 				senddatamsg.msg_flags = 0;
 
-				len = kernel_sendmsg(clihost->datasock, &senddatamsg, &iov, 1, sizeof(struct netmsg_data));
-				if (len < 0 || len != sizeof(struct netmsg_data)) {
+				len = kernel_recvmsg(clihost->datasock, &senddatamsg, &iov, 1, sizeof(struct data_info));
+				if (len < 0 || len != sizeof(struct data_info)) {
 					KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_sendmsg err, len=%d, buffer=%ld\n",
 					        len, sizeof(struct netmsg_req));
 				    if (len == -ECONNREFUSED) {

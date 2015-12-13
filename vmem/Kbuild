@@ -1,2 +1,2 @@
 obj-m:=vmem.o
-vmem-objs:=vmem_main.o vmem_sysfs_file.o vmem_net.o
+vmem-objs:=vmem_main.o vmem_sysfs_file.o vmem_net.o vmem_file.o

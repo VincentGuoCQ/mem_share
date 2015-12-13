@@ -77,8 +77,7 @@ static ssize_t clihost_priblk_show(struct device *dev, struct device_attribute *
 			out += sprintf(out, "%lx\t", (unsigned long)Devices->addr_entry[nIndex].entry.native.addr);
 		}
 		else {
-			out += sprintf(out, "%lx\t",
-						(unsigned long)Devices->addr_entry[nIndex].entry.vmem.blk_remote_addr);
+			out += sprintf(out, "NULL\t");
 		}
 		out += sprintf(out, "%d\n", Devices->addr_entry[nIndex].inuse_page);
 		mutex_unlock(&Devices->addr_entry[nIndex].handle_mutex);
