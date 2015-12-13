@@ -7,9 +7,9 @@
 #define NETMSG_CLI_REQUEST_FREE_BLK		0x2
 #define NETMSG_CLI_REQUEST_READ			0x3
 #define NETMSG_CLI_REQUEST_WRITE		0x4
+#define NETMSG_CLI_REQUEST_HEARTBEAT	0x5
 
-struct netmsg_req {
-	struct list_head ls_reqmsg;
+struct req_info {
 	unsigned int msgID;
 	union {
 		struct {
@@ -31,16 +31,20 @@ struct netmsg_req {
 			unsigned int remoteIndex;
 			unsigned int pageIndex;
 		} req_write;
-	} info;
+	} data;
+};
+struct netmsg_req {
+	struct list_head ls_reqmsg;
+	struct req_info info;
 };
 
 #define NETMSG_SER_REPLY_ALLOC_BLK		0x1
 #define NETMSG_SER_REPLY_ERR			0x2
 #define NETMSG_SER_REPLY_WRITE			0x3
 #define NETMSG_SER_REPLY_READ			0x4
+#define NETMSG_CLI_REPLY_HEARTBEAT		0x5
 
-struct netmsg_rpy {
-	struct list_head ls_rpymsg;
+struct rpy_info {
 	unsigned int msgID;
 	union {
 		struct {
@@ -48,7 +52,6 @@ struct netmsg_rpy {
 			unsigned int blk_rest_available;
 			struct {
 				unsigned int remoteIndex;
-				unsigned long remoteaddr;
 			}blkinfo[BLK_MAX_PER_REQ];
 		}rpyblk;
 		struct {
@@ -64,15 +67,19 @@ struct netmsg_rpy {
 			unsigned int remoteIndex;
 			unsigned int pageIndex;
 		} rpy_read;
-	} info;
+	} data;
+};
+struct netmsg_rpy {
+	struct list_head ls_rpymsg;
+	struct rpy_info info;
 };
 
-#define VPAGE_SIZE_SHIFT	10
-#define VPAGE_SIZE			(1UL << VPAGE_SIZE_SHIFT)
-
-struct netmsg_data {
-	struct list_head ls_req;
+struct data_info {
 	unsigned long vpageaddr;
 	char data[VPAGE_SIZE];
+};
+struct netmsg_data {
+	struct list_head ls_req;
+	struct data_info info;
 };
 #endif //NET_MSG_H

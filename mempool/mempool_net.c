@@ -34,9 +34,9 @@ static int CliRecvThread(void *data) {
     struct kvec recviov, recvdataiov, sendiov, senddataiov;
     struct client_host *clihost = (struct client_host *)data;
     struct msghdr recvmsg, sendmsg, senddatamsg, recvdatamsg;
-	struct netmsg_req *msg_req = (struct netmsg_req *)kmalloc(sizeof(struct netmsg_req), GFP_USER);
+	struct netmsg_req msg_req;
 	struct netmsg_data *msg_wrdata = (struct netmsg_data *)kmalloc(sizeof(struct netmsg_data), GFP_USER);
-	struct netmsg_rpy *msg_rpy = (struct netmsg_rpy *)kmalloc(sizeof(struct netmsg_rpy), GFP_USER);
+	struct netmsg_rpy msg_rpy;
 	struct netmsg_data *msg_rddata = (struct netmsg_data *)kmalloc(sizeof(struct netmsg_data), GFP_USER);
     int len = 0;
 
@@ -54,18 +54,19 @@ static int CliRecvThread(void *data) {
 	memset(&recvdataiov, 0, sizeof(struct kvec));
 	memset(&sendiov, 0, sizeof(struct kvec));
 	memset(&senddataiov, 0, sizeof(struct kvec));
-    recviov.iov_base = (void *)msg_req;
-    recviov.iov_len = sizeof(struct netmsg_req);
-	sendiov.iov_base = (void *)msg_rpy;
-	sendiov.iov_len = sizeof(struct netmsg_rpy);
-	recvdataiov.iov_base = (void *)msg_wrdata;
-	recvdataiov.iov_len = sizeof(struct netmsg_data);
-	senddataiov.iov_base = (void *)msg_rddata;
-	senddataiov.iov_len = sizeof(struct netmsg_data);
+    recviov.iov_base = (void *)&msg_req.info;
+    recviov.iov_len = sizeof(struct req_info);
+	sendiov.iov_base = (void *)&msg_rpy.info;
+	sendiov.iov_len = sizeof(struct rpy_info);
+	recvdataiov.iov_base = (void *)&msg_wrdata->info;
+	recvdataiov.iov_len = sizeof(struct data_info);
+	senddataiov.iov_base = (void *)&msg_rddata->info;
+	senddataiov.iov_len = sizeof(struct data_info);
 
     while (!kthread_should_stop()) {
-        schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
-		memset(msg_req, 0, sizeof(struct netmsg_req));
+        //schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
+		memset(&msg_req, 0, sizeof(struct netmsg_req));
+		memset(&msg_rpy, 0, sizeof(struct netmsg_rpy));
 
 		mutex_lock(&clihost->ptr_mutex);
 		if(CLIHOST_STATE_CLOSED == clihost->state) {
@@ -75,40 +76,40 @@ static int CliRecvThread(void *data) {
 		mutex_unlock(&clihost->ptr_mutex);
 
 		len = kernel_recvmsg(clihost->sock, &recvmsg, &recviov, 1, 
-					sizeof(struct netmsg_req), 0);
+					sizeof(struct req_info), 0);
         KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_recvmsg en=%d\n",len);
         //close of client
 		if(len == 0) {
 			break;
 		}
-		if (len < 0 || len != sizeof(struct netmsg_req)) {
+		if (len < 0 || len != sizeof(struct req_info)) {
             KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_recvmsg err, len=%d, buffer=%ld\n",
-                    len, sizeof(struct netmsg_req));
+                    len, sizeof(struct req_info));
             if (len == -ECONNREFUSED) {
                 KER_DEBUG(KERN_ALERT"mempool thread: Receive Port Unreachable packet!\n");
             }
 			continue;
         }
-		switch(msg_req->msgID) {
+		switch(msg_req.info.msgID) {
 			//alloc block
 			case NETMSG_CLI_REQUEST_ALLOC_BLK: {
 				unsigned int nIndex = 0, count = 0;
 
-				msg_rpy->msgID = NETMSG_SER_REPLY_ALLOC_BLK;
+				KER_PRT(KERN_INFO"begin to alloc\n");
+				msg_rpy.info.msgID = NETMSG_SER_REPLY_ALLOC_BLK;
 
 				mutex_lock(&Devices->blk_mutex);
 				for(nIndex = 0, count = 0; nIndex < MAX_BLK_NUM_IN_MEMPOOL && count < BLK_MAX_PER_REQ &&
-							count < msg_req->info.req_alloc_blk.blknum; nIndex++) {
+							count < msg_req.info.data.req_alloc_blk.blknum; nIndex++) {
 					if(Devices->blk[nIndex].avail && !Devices->blk[nIndex].inuse) {
-						msg_rpy->info.rpyblk.blkinfo[count].remoteIndex = nIndex;
-						msg_rpy->info.rpyblk.blkinfo[count].remoteaddr = (unsigned long)Devices->blk[nIndex].blk_addr;
-		sendmsg.msg_namelen = sizeof(struct sockaddr_in);
+						msg_rpy.info.data.rpyblk.blkinfo[count].remoteIndex = nIndex;
 						Devices->blk[nIndex].inuse = TRUE;
 						count++;
 					}
 				}
-				msg_rpy->info.rpyblk.blk_alloc = count;
-				msg_rpy->info.rpyblk.blk_rest_available = 0;
+				msg_rpy.info.data.rpyblk.blk_alloc = count;
+				msg_rpy.info.data.rpyblk.blk_rest_available = 0;
+
 				mutex_unlock(&Devices->blk_mutex);
 
 				KER_DEBUG(KERN_INFO"mempool thread: send alloc blk reply\n");
@@ -119,48 +120,53 @@ static int CliRecvThread(void *data) {
 			case NETMSG_CLI_REQUEST_WRITE: {
 				unsigned int nBlkIndex = 0, nPageIndex = 0;
 
-				nBlkIndex = msg_req->info.req_write.remoteIndex;
-				nPageIndex = msg_req->info.req_write.pageIndex;
-
-				len = kernel_recvmsg(clihost->datasock, &recvmsg, &recvdataiov, 1, sizeof(struct netmsg_data), 0);
-				if (len < 0 || len != sizeof(struct netmsg_data)) {
+				len = kernel_recvmsg(clihost->datasock, &recvmsg, &recvdataiov, 1, sizeof(struct data_info), 0);
+				if (len < 0 || len != sizeof(struct data_info)) {
 					KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_recvmsg err, len=%d, buffer=%ld\n",
-					        len, sizeof(struct netmsg_req));
+					        len, sizeof(struct req_info));
 				    if (len == -ECONNREFUSED) {
 						KER_DEBUG(KERN_ALERT"mempool thread: Receive Port Unreachable packet!\n");
 					}
 				}
 
+				KER_PRT(KERN_INFO"begin to write\n");
+
+				nBlkIndex = msg_req.info.data.req_write.remoteIndex;
+				nPageIndex = msg_req.info.data.req_write.pageIndex;
+
 				KER_DEBUG(KERN_INFO"mempool CliSendThread: nBlkIndex %d, nPageIndex %d\n", nBlkIndex, nPageIndex);
 				KER_DEBUG(KERN_INFO"mempool CliSendThread: data %s\n", msg_wrdata->data);
 				mutex_lock(&Devices->blk_mutex);
 				memcpy(Devices->blk[nBlkIndex].blk_addr + nPageIndex * VPAGE_SIZE,
-							msg_wrdata->data, VPAGE_SIZE);
+							msg_wrdata->info.data, VPAGE_SIZE);
 				mutex_unlock(&Devices->blk_mutex);
 
-				msg_rpy->msgID = NETMSG_SER_REPLY_WRITE;
+				msg_rpy.info.msgID = NETMSG_SER_REPLY_WRITE;
 
+				KER_PRT(KERN_INFO"end to write\n");
 				break;
 			}
 			//read data
 			case NETMSG_CLI_REQUEST_READ: {
 				unsigned int nBlkIndex = 0, nPageIndex = 0;
 
-				msg_rpy->msgID = NETMSG_SER_REPLY_READ;
-				msg_rpy->info.rpy_read.vpageaddr = msg_req->info.req_read.vpageaddr;
-				msg_rpy->info.rpy_read.remoteIndex = msg_req->info.req_read.remoteIndex;
-				msg_rpy->info.rpy_read.pageIndex = msg_req->info.req_read.pageIndex;
+				KER_PRT(KERN_INFO"begin to read\n");
+				msg_rpy.info.msgID = NETMSG_SER_REPLY_READ;
+				msg_rpy.info.data.rpy_read.vpageaddr = msg_req.info.data.req_read.vpageaddr;
+				msg_rpy.info.data.rpy_read.remoteIndex = msg_req.info.data.req_read.remoteIndex;
+				msg_rpy.info.data.rpy_read.pageIndex = msg_req.info.data.req_read.pageIndex;
 
-				nBlkIndex = msg_req->info.req_write.remoteIndex;
-				nPageIndex = msg_req->info.req_write.pageIndex;
+				nBlkIndex = msg_req.info.data.req_write.remoteIndex;
+				nPageIndex = msg_req.info.data.req_write.pageIndex;
 
-				memcpy(msg_rddata->data, Devices->blk[nBlkIndex].blk_addr + nPageIndex * VPAGE_SIZE,
+				memcpy(msg_rddata->info.data, Devices->blk[nBlkIndex].blk_addr + nPageIndex * VPAGE_SIZE,
 							VPAGE_SIZE);
+				KER_PRT(KERN_INFO"end to read\n");
 
-				len = kernel_sendmsg(clihost->datasock, &senddatamsg, &senddataiov, 1, sizeof(struct netmsg_data));
-				if (len < 0 || len != sizeof(struct netmsg_data)) {
+				len = kernel_sendmsg(clihost->datasock, &senddatamsg, &senddataiov, 1, sizeof(struct data_info));
+				if (len < 0 || len != sizeof(struct data_info)) {
 					KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_sendmsg err, len=%d, buffer=%ld\n",
-					        len, sizeof(struct netmsg_req));
+					        len, sizeof(struct req_info));
 				    if (len == -ECONNREFUSED) {
 						KER_DEBUG(KERN_ALERT"mempool thread: Receive Port Unreachable packet!\n");
 					}
@@ -171,16 +177,17 @@ static int CliRecvThread(void *data) {
 				continue;
 		}
 
-		len = kernel_sendmsg(clihost->sock, &sendmsg, &sendiov, 1, sizeof(struct netmsg_rpy));
+		len = kernel_sendmsg(clihost->sock, &sendmsg, &sendiov, 1, sizeof(struct rpy_info));
 
-		if(len != sizeof(struct netmsg_rpy)) {
+		if(len != sizeof(struct rpy_info)) {
 			KER_DEBUG(KERN_INFO"kernel_sendmsg err, len=%d, buffer=%ld\n",
-						len, sizeof(struct netmsg_rpy));
+						len, sizeof(struct rpy_info));
 			if(len == -ECONNREFUSED) {
 				KER_DEBUG(KERN_INFO"Receive Port Unreachable packet!\n");
 			}
 			//continue;
 		}
+		KER_PRT(KERN_INFO"end\n");
 
     }
 
@@ -193,8 +200,6 @@ static int CliRecvThread(void *data) {
 		//clihost->sock = NULL;
 	}
 	mutex_unlock(&clihost->ptr_mutex);
-	kfree(msg_req);
-	kfree(msg_rpy);
 	kfree(msg_wrdata);
 	kfree(msg_rddata);
 	while(!kthread_should_stop()) {
