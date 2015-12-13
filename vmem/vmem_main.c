@@ -9,6 +9,9 @@ struct vmem_dev *Devices = NULL;
 struct cli_blk blktable[BLK_NUM_MAX];
 struct vpage_alloc vpage_alloc;
 
+int write_swap(const char __user *buf, size_t count, loff_t *pos);
+int read_swap(const char __user *buf, size_t count, loff_t *pos);
+
 int vmem_open(struct inode *inode, struct file *filp) {
 	filp->private_data = Devices;
 	return ERR_SUCCESS;
@@ -45,6 +48,9 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 		KER_DEBUG(KERN_INFO"vmem:%s:page not used\n", __FUNCTION__);
 		return ERR_VMEM_PAGE_NOT_USED;
 	}
+//	read_swap(buf, count, ppos);
+//	KER_PRT(KERN_INFO"end to read:%ld\n", jiffies);
+//	return count;
 	//vpage in native
 	if(dev->addr_entry[nBlkIndex].native) {
 		mutex_lock(&dev->addr_entry[nBlkIndex].handle_mutex);
@@ -71,22 +77,23 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 		memset((void *)msg_req, 0, sizeof(struct netmsg_req));
 
 		//post read msg to list
-		msg_req->msgID = NETMSG_CLI_REQUEST_READ;
-		msg_req->info.req_write.vpageaddr = (unsigned long)*ppos;
-		msg_req->info.req_read.remoteIndex
+		msg_req->info.msgID = NETMSG_CLI_REQUEST_READ;
+		msg_req->info.data.req_write.vpageaddr = (unsigned long)*ppos;
+		msg_req->info.data.req_read.remoteIndex
 			= dev->addr_entry[nBlkIndex].entry.vmem.blk_remote_index;
-		msg_req->info.req_read.pageIndex = nPageIndex;
+		msg_req->info.data.req_read.pageIndex = nPageIndex;
 		mutex_lock(&serhost->lshd_req_msg_mutex);
 		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
+		up(&serhost->send_sem);
 		KER_DEBUG(KERN_INFO"add read msg in server\n");
 		while(1) {
-			schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
+			down(&dev->read_semphore);
 			mutex_lock(&Devices->lshd_read_mutex);
 			list_for_each_safe(p, next, &Devices->lshd_read) {
 				msg_rddata = list_entry(p, struct netmsg_data, ls_req); 
-				if(msg_rddata->vpageaddr == *ppos) {
-					copy_to_user(buf, msg_rddata->data, count);
+				if(msg_rddata->info.vpageaddr == *ppos) {
+					copy_to_user(buf, msg_rddata->info.data, count);
 					list_del(p);
 					kmem_cache_free(Devices->slab_netmsg_data, msg_rddata);
 					mutex_unlock(&Devices->lshd_read_mutex);
@@ -131,6 +138,9 @@ static ssize_t vmem_write(struct file *filp, const char __user *buf, size_t coun
 		KER_DEBUG(KERN_INFO"vmem:%s:page not used\n", __FUNCTION__);
 		return ERR_VMEM_PAGE_NOT_USED;
 	}
+//	write_swap(buf, count, ppos);
+//	KER_PRT(KERN_INFO"end to write:%ld\n", jiffies);
+//	return count;
 	//vpage in native
 	if(dev->addr_entry[nBlkIndex].native) {
 		mutex_lock(&dev->addr_entry[nBlkIndex].handle_mutex);
@@ -155,21 +165,22 @@ static ssize_t vmem_write(struct file *filp, const char __user *buf, size_t coun
 		memset((void *)msg_wrdata, 0, sizeof(struct netmsg_data));
 
 		//post write msg to list
-		msg_req->msgID = NETMSG_CLI_REQUEST_WRITE;
+		msg_req->info.msgID = NETMSG_CLI_REQUEST_WRITE;
 		//msg_req->info.req_write.vpageaddr = pmemwrite->vpageaddr;
-		msg_req->info.req_write.remoteIndex
+		msg_req->info.data.req_write.remoteIndex
 			= dev->addr_entry[nBlkIndex].entry.vmem.blk_remote_index;
-		msg_req->info.req_write.pageIndex = nPageIndex;
+		msg_req->info.data.req_write.pageIndex = nPageIndex;
 		mutex_lock(&serhost->lshd_req_msg_mutex);
 		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
 		KER_DEBUG(KERN_INFO"add write msg in server\n");
 
 		//post data to list
-		copy_from_user(msg_wrdata->data, buf, count);
+		copy_from_user(msg_wrdata->info.data, buf, count);
 		mutex_lock(&serhost->lshd_wrdata_mutex);
 		list_add_tail(&msg_wrdata->ls_req, &serhost->lshd_wrdata);
 		mutex_unlock(&serhost->lshd_wrdata_mutex);
+		up(&serhost->send_sem);
 		KER_DEBUG(KERN_INFO"add write data in server\n");
 	}
 
@@ -235,26 +246,28 @@ static void destory_device(struct vmem_dev *dev, int which) {
 		pserhost = list_entry(p, struct server_host, ls_serhost);
 
 		mutex_lock(&pserhost->ptr_mutex);
-		if(pserhost->sock) {
-			sock_release(pserhost->sock);
-			pserhost->sock = NULL;
-		}
-		if(pserhost->datasock) {
-			sock_release(pserhost->datasock);
-			pserhost->datasock = NULL;
-		}
+		pserhost->state = CLIHOST_STATE_CLOSED; 
+		up(&pserhost->send_sem);
+//		if(pserhost->sock) {
+//			sock_release(pserhost->sock);
+//			//pserhost->sock = NULL;
+//		}
+//		if(pserhost->datasock) {
+//			sock_release(pserhost->datasock);
+//			//pserhost->datasock = NULL;
+//		}
 		mutex_unlock(&pserhost->ptr_mutex);
 		KER_DEBUG(KERN_INFO"vmem:destory serverhost sock\n");
 
 		if(pserhost->SerSendThread) {
 			kthread_stop(pserhost->SerSendThread);
-			pserhost->SerSendThread = NULL;
+			//pserhost->SerSendThread = NULL;
 		}
 		KER_DEBUG(KERN_INFO"vmem:destory serverhost send thread\n");
 
 		if(pserhost->SerRecvThread) {
 			kthread_stop(pserhost->SerRecvThread);
-			pserhost->SerRecvThread = NULL;
+			//pserhost->SerRecvThread = NULL;
 		}
 		KER_DEBUG(KERN_INFO"vmem:destory serverhost recv thread\n");
 
@@ -340,6 +353,7 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	//init mutex
 	mutex_init(&dev->lshd_serhost_mutex);
 	mutex_init(&dev->lshd_read_mutex);
+	sema_init(&dev->read_semphore, 0);
 	KER_DEBUG(KERN_NOTICE"vmem:vmem_create\n");
 
 	//init block table

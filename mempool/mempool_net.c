@@ -164,6 +164,7 @@ static int CliRecvThread(void *data) {
 				KER_PRT(KERN_INFO"end to read\n");
 
 				len = kernel_sendmsg(clihost->datasock, &senddatamsg, &senddataiov, 1, sizeof(struct data_info));
+
 				if (len < 0 || len != sizeof(struct data_info)) {
 					KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_sendmsg err, len=%d, buffer=%ld\n",
 					        len, sizeof(struct req_info));

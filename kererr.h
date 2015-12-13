@@ -14,5 +14,6 @@
 #define KERERR_NULL_PTR -9
 #define KERERR_CONN_REFUSED -10
 #define KERERR_SER_EXIST -11
+#define KERERR_OPEN_FILE -12
 
 #endif //KERERR_H

@@ -10,6 +10,8 @@
 
 #define KER_PRT(STR, args...)	printk(STR, ##args)
 
+#define SWAP_FILE "/root/swap.file"
+
 static int vmem_major = 0;
 static int vmem_minor= 0;
 
@@ -25,6 +27,9 @@ module_param(vmem_minor, int, 0);
 #define LOWER_LIMIT_PRECENT 0.2
 
 #define VMEM_IF_NAME "eth0"
+
+#define CLIHOST_STATE_CONNECTED 1
+#define CLIHOST_STATE_CLOSED	2 
 
 struct server_host {
 	struct list_head ls_serhost;
@@ -46,6 +51,8 @@ struct server_host {
 	struct mutex lshd_wrdata_mutex;
 	struct list_head lshd_wrdata;
 
+	struct semaphore send_sem;
+
 	struct kmem_cache *slab_netmsg_req;
 	struct kmem_cache *slab_netmsg_data;
 };
@@ -55,7 +62,6 @@ struct vmem_blk {
 	bool:1;
 	bool inuse:1;
 	unsigned int blk_remote_index;
-	unsigned long blk_remote_addr;
 	unsigned long blk_size;
 };
 
@@ -95,6 +101,7 @@ struct vmem_dev {
 	struct mutex lshd_serhost_mutex;
 	struct list_head lshd_read;
 	struct mutex lshd_read_mutex;
+	struct semaphore read_semphore;
 
 	struct kmem_cache * slab_server_host;
 	struct cli_blk * addr_entry;

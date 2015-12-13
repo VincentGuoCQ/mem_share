@@ -18,7 +18,7 @@ struct req_info {
 		struct {
 			unsigned int blknum;
 			struct {
-				unsigned int blkIndex;
+				unsigned int blkindex;
 			} blk_table[BLK_MAX_PER_REQ];
 		} req_free_blk;
 		struct {
