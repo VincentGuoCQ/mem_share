@@ -229,10 +229,10 @@ int SerSendThread(void *data) {
 
     }
 	if(serhost->sock) {
-		sock_release(serhost->sock);
+		kernel_sock_shutdown(serhost->sock, SHUT_RDWR);
 	}
 	if(serhost->datasock) {
-		sock_release(serhost->datasock);
+		kernel_sock_shutdown(serhost->datasock, SHUT_RDWR);
 	}
 	while(!kthread_should_stop()) {
 		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);

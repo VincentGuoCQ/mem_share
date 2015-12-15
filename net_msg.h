@@ -7,7 +7,7 @@
 #define NETMSG_CLI_REQUEST_FREE_BLK		0x2
 #define NETMSG_CLI_REQUEST_READ			0x3
 #define NETMSG_CLI_REQUEST_WRITE		0x4
-#define NETMSG_CLI_REQUEST_HEARTBEAT	0x5
+#define NETMSG_CLI_REQUEST_HEARTBEAT	0x15
 
 struct req_info {
 	unsigned int msgID;
@@ -42,7 +42,7 @@ struct netmsg_req {
 #define NETMSG_SER_REPLY_ERR			0x2
 #define NETMSG_SER_REPLY_WRITE			0x3
 #define NETMSG_SER_REPLY_READ			0x4
-#define NETMSG_CLI_REPLY_HEARTBEAT		0x5
+#define NETMSG_SER_REPLY_HEARTBEAT		0x15
 
 struct rpy_info {
 	unsigned int msgID;
@@ -67,6 +67,9 @@ struct rpy_info {
 			unsigned int remoteIndex;
 			unsigned int pageIndex;
 		} rpy_read;
+		struct {
+			unsigned int blk_reset_available;
+		} rpy_heartbeat;
 	} data;
 };
 struct netmsg_rpy {
