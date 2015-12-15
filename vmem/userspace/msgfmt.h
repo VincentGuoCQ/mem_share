@@ -15,7 +15,6 @@ struct MsgCliOp {
 	unsigned int op;
 	union {
 		struct {
-			char host_name[HOST_NAME_LEN];
 			struct in_addr host_addr;
 			unsigned int block_num;
 		} addser;

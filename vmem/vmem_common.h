@@ -20,7 +20,8 @@ module_param(vmem_minor, int, 0);
 
 
 //the period for re-calculate the precent of free pages, in seconds
-#define CALCULATE_PERIOD 5
+#define CALCULATE_PERIOD 10
+#define HEARTBEAT_PERIOD 5
 //the precentage for the daemon thread to trigger memory borrow
 #define UPPER_LIMIT_PRECENT 0.8
 //the precentage for the daemon thread to trigger memory return
@@ -33,7 +34,6 @@ module_param(vmem_minor, int, 0);
 
 struct server_host {
 	struct list_head ls_serhost;
-	char host_name[HOST_NAME_LEN];
 	struct sockaddr_in host_addr;
 	struct sockaddr_in host_data_addr;
 	unsigned int block_inuse; 
@@ -102,6 +102,7 @@ struct vmem_dev {
 	struct list_head lshd_read;
 	struct mutex lshd_read_mutex;
 	struct semaphore read_semphore;
+	struct timer_list heartbeat;
 
 	struct kmem_cache * slab_server_host;
 	struct cli_blk * addr_entry;

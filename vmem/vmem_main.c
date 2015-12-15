@@ -213,6 +213,8 @@ static void destory_device(struct vmem_dev *dev, int which) {
 	if(!dev) {
 		return;
 	}
+	//delete timer
+	del_timer(&dev->heartbeat);
 	//kill daemon thread
 	if(dev->DaemonThread) {
 		kthread_stop(dev->DaemonThread);
@@ -304,6 +306,28 @@ static void destory_device(struct vmem_dev *dev, int which) {
 	//free data memory space
 }
 
+static void heartbeat_func(unsigned long arg) {
+	struct vmem_dev *dev = (struct vmem_dev *)(arg);
+	struct netmsg_req *msg_req = NULL;
+	struct server_host *serhost = NULL;
+	struct list_head *p = NULL;
+	mutex_lock(&dev->lshd_serhost_mutex);
+	list_for_each(p, &dev->lshd_serhost) {
+		serhost = list_entry(p, struct server_host, ls_serhost);
+		msg_req = (struct netmsg_req *)kmem_cache_alloc(serhost->slab_netmsg_req, GFP_USER);
+		memset(msg_req, 0 ,sizeof(struct netmsg_req));
+		msg_req->info.msgID = NETMSG_CLI_REQUEST_HEARTBEAT;
+		mutex_lock(&serhost->lshd_req_msg_mutex);
+		list_add_tail(&msg_req->ls_reqmsg, &serhost->lshd_req_msg);
+		mutex_unlock(&serhost->lshd_req_msg_mutex);
+		up(&serhost->send_sem);
+	}
+	mutex_unlock(&dev->lshd_serhost_mutex);
+
+	dev->heartbeat.expires = jiffies + HEARTBEAT_PERIOD * HZ;
+	add_timer(&dev->heartbeat);
+}
+
 static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	int ret = KERERR_SUCCESS, nIndex = 0;
 	memset(dev, 0, sizeof(struct vmem_dev));
@@ -370,6 +394,12 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	//init daemon thread
 	dev->DaemonThread = kthread_create(vmem_daemon, (void *)dev, "vmem daemon");
 	wake_up_process(dev->DaemonThread);
+	//init heartbeat timer
+	init_timer(&dev->heartbeat);
+	dev->heartbeat.function = &heartbeat_func;
+	dev->heartbeat.data = (unsigned long)dev;
+	dev->heartbeat.expires = jiffies + HEARTBEAT_PERIOD * HZ;
+	add_timer(&dev->heartbeat);
 	return ret;
 
 	kmem_cache_destroy(dev->slab_netmsg_data);
