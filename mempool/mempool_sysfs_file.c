@@ -22,6 +22,7 @@ unsigned int blk_state_to_str(struct mempool_blk * blk) {
 	return 0;
 }
 char * clihost_state_str[] = {
+	"null",
 	"connected",
 	NULL,
 };
@@ -44,14 +45,14 @@ static ssize_t clihost_state_show(struct device *dev, struct device_attribute *a
 		return 0;
 	}
 	
-	out += sprintf(out, "Client Name\tIP Address\tBlock In Use\tState\n");
+	out += sprintf(out, "IP Address\tBlock In Use\tState\n");
 	out += sprintf(out, "--------------------------------------------\n");
 	
 	mutex_lock(&Devices->lshd_rent_client_mutex);
 	list_for_each(p, &Devices->lshd_rent_client) {
 		clihost = list_entry(p, struct client_host, ls_rent);
 		IP_convert(&clihost->host_addr.sin_addr, IPaddr, IP_ADDR_LEN);
-		out += sprintf(out, "%s\t\t%s\t%d\t", clihost->host_name, IPaddr, clihost->block_num);
+		out += sprintf(out, "%s\t%d\t", IPaddr, clihost->block_inuse);
 		out += sprintf(out, "%s\n", clihost_state_str[clihost_state_to_str(clihost)]);
 	}
 	mutex_unlock(&Devices->lshd_rent_client_mutex);
@@ -93,6 +94,7 @@ static ssize_t serhost_cfg_store(struct device *dev, struct device_attribute *at
 		//add available block
 		case SERHOST_OP_ADD_BLK:
 			KER_DEBUG(KERN_NOTICE"mempool:add block called\n");
+			mutex_lock(&Devices->blk_mutex);
 			for(nIndex = 0, nCount = 0; (nIndex < MAX_BLK_NUM_IN_MEMPOOL) && (nCount < serop->info.addblk.block_num); nIndex++) {
 				if(!Devices->blk[nIndex].avail) {
 					Devices->blk[nIndex].blk_pages = alloc_pages(GFP_USER, BLK_SIZE_SHIFT-PAGE_SHIFT);
@@ -101,6 +103,8 @@ static ssize_t serhost_cfg_store(struct device *dev, struct device_attribute *at
 					nCount++;
 				}
 			}
+			mutex_unlock(&Devices->blk_mutex);
+			Devices->nblk_avail += nCount;
 			break;
 	}
 

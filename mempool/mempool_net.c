@@ -107,10 +107,12 @@ static int CliRecvThread(void *data) {
 						count++;
 					}
 				}
-				msg_rpy.info.data.rpyblk.blk_alloc = count;
-				msg_rpy.info.data.rpyblk.blk_rest_available = 0;
-
 				mutex_unlock(&Devices->blk_mutex);
+
+				Devices->nblk_avail -= count; 
+				clihost->block_inuse += count;
+				msg_rpy.info.data.rpyblk.blk_alloc = count;
+				msg_rpy.info.data.rpyblk.blk_rest_available = Devices->nblk_avail;
 
 				KER_DEBUG(KERN_INFO"mempool thread: send alloc blk reply\n");
 		
@@ -172,6 +174,12 @@ static int CliRecvThread(void *data) {
 						KER_DEBUG(KERN_ALERT"mempool thread: Receive Port Unreachable packet!\n");
 					}
 				}
+				break;
+			}
+			//heart beat
+			case NETMSG_CLI_REQUEST_HEARTBEAT: {
+				msg_rpy.info.msgID = NETMSG_SER_REPLY_HEARTBEAT;
+				msg_rpy.info.data.rpy_heartbeat.blk_rest_available = Devices->nblk_avail;
 				break;
 			}
 			default:
