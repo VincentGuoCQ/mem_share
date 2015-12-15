@@ -33,10 +33,9 @@ struct mempool_blk {
 
 struct client_host {
 	struct list_head ls_rent;
-	char host_name[HOST_NAME_LEN];
 	struct sockaddr_in host_addr;
 	struct sockaddr_in host_data_addr;
-	unsigned int block_num; 
+	unsigned int block_inuse; 
 	unsigned int state;
 	struct socket *sock;
 	struct socket *datasock;
@@ -58,6 +57,7 @@ struct mempool_dev {
 	struct list_head lshd_rent_client;
 	struct mutex lshd_rent_client_mutex;
 
+	unsigned int nblk_avail;
 	struct mempool_blk blk[MAX_BLK_NUM_IN_MEMPOOL];
 	struct mutex blk_mutex;
 
