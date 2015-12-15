@@ -134,29 +134,29 @@ int vmem_add_server(int argc, char *argv[]) {
 				PRINT_INFO("option error:invalid option\n");
 		}
 	}
-	if( NULL == SerName || NULL == SerAddr || NULL == SerBlockNum) {
+	if(NULL == SerAddr) {
 		PRINT_INFO("argument error: server name or address missing\n");
 		ret = ERR_CLI_ARG_MISSING; 
 		goto err_args;
 	}
 
 	//copy argument to structure
-	if(strlen(SerName) >= HOST_NAME_LEN) {
-		PRINT_INFO("argument error: sername too long\n");
-		ret = ERR_CLI_ARG_ILLEGAL;
-		goto err_args;
-	}
-	memcpy(pCli->info.addser.host_name, SerName, strlen(SerName));
+//	if(strlen(SerName) >= HOST_NAME_LEN) {
+//		PRINT_INFO("argument error: sername too long\n");
+//		ret = ERR_CLI_ARG_ILLEGAL;
+//		goto err_args;
+//	}
+	//memcpy(pCli->info.addser.host_name, SerName, strlen(SerName));
 	if(inet_aton(SerAddr, &pCli->info.addser.host_addr) == 0) {
 		PRINT_INFO("argument error: IP address illegal\n");
 		ret = ERR_CLI_ARG_ILLEGAL;
 		goto err_args;
 	}
-	if((pCli->info.addser.block_num = atoi(SerBlockNum)) == 0) {
-		PRINT_INFO("argument error: IP address illegal\n");
-		ret = ERR_CLI_ARG_ILLEGAL;
-		goto err_args;
-	}
+//	if((pCli->info.addser.block_num = atoi(SerBlockNum)) == 0) {
+//		PRINT_INFO("argument error: IP address illegal\n");
+//		ret = ERR_CLI_ARG_ILLEGAL;
+//		goto err_args;
+//	}
 	pCli->op = CLIHOST_OP_ADD_SERHOST;
 
 	//write to file

@@ -44,15 +44,15 @@ static ssize_t clihost_priser_show(struct device *dev, struct device_attribute *
 		return 0;
 	}
 
-	out += sprintf(out, "Server Name\t\tIP Address\t\t Block Num\t\tState\n");
+	out += sprintf(out, "IP Address\t\t Block Avail\t\tBlock Inuse\n");
 	out += sprintf(out, "----------------------------------\n");
 
 	mutex_lock(&Devices->lshd_serhost_mutex);
 	list_for_each(p, &Devices->lshd_serhost) {
 		ps = list_entry(p, struct server_host, ls_serhost);
 		IP_convert(&ps->host_addr.sin_addr, IPaddr, IP_ADDR_LEN);
-		out += sprintf(out, "%s\t\t%s\t\t%d\t\tconnected\n",
-					ps->host_name, IPaddr, ps->block_available);
+		out += sprintf(out, "%s\t\t%d\t\t%d\n",
+					IPaddr, ps->block_available, ps->block_inuse);
 	}
 	mutex_unlock(&Devices->lshd_serhost_mutex);
 	return out - buf;
@@ -107,11 +107,10 @@ static ssize_t clihost_op_store(struct device *dev, struct device_attribute *att
 		case CLIHOST_OP_ADD_SERHOST: {
 			IP_convert(&cliop->info.addser.host_addr, IPaddr, IP_ADDR_LEN);
 			KER_DEBUG(KERN_INFO"vmem:server add\n");
-			KER_DEBUG(KERN_INFO"name:%s,addr:%s", cliop->info.addser.host_name, IPaddr);
+			KER_DEBUG(KERN_INFO"addr:%s", IPaddr);
 			//allocate memory and copy to memory
 			serhostnew = (struct server_host *)kmem_cache_alloc(Devices->slab_server_host, GFP_KERNEL);
 			memset(serhostnew, 0, sizeof(struct server_host));
-			memcpy(serhostnew->host_name, cliop->info.addser.host_name, HOST_NAME_LEN);
 			memcpy(&serhostnew->host_addr.sin_addr, &cliop->info.addser.host_addr, sizeof(struct in_addr));
 			memcpy(&serhostnew->block_available, &cliop->info.addser.block_num, sizeof(unsigned int));
 			//search for existing

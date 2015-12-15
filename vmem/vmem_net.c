@@ -133,6 +133,11 @@ int SerRecvThread(void *data) {
 				up(&Devices->read_semphore);
 				break;
 			}
+			//heart beat
+			case NETMSG_SER_REPLY_HEARTBEAT: {
+				serhost->block_available = msg_rpy.info.data.rpy_heartbeat.blk_reset_available;
+				break;
+			}
 		}
 	}
 err_device_ptr:
@@ -224,10 +229,10 @@ int SerSendThread(void *data) {
 
     }
 	if(serhost->sock) {
-		sock_release(serhost->sock);
+		kernel_sock_shutdown(serhost->sock, SHUT_RDWR);
 	}
 	if(serhost->datasock) {
-		sock_release(serhost->datasock);
+		kernel_sock_shutdown(serhost->datasock, SHUT_RDWR);
 	}
 	while(!kthread_should_stop()) {
 		schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
