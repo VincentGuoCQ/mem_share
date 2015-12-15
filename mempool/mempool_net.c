@@ -204,8 +204,10 @@ static int CliRecvThread(void *data) {
 	mutex_lock(&clihost->ptr_mutex);
 	if(CLIHOST_STATE_CONNECTED == clihost->state) {
 		clihost->state = CLIHOST_STATE_CLOSED;
-		sock_release(clihost->sock);
-		sock_release(clihost->datasock);
+		kernel_sock_shutdown(clihost->sock, SHUT_RDWR);
+		kernel_sock_shutdown(clihost->datasock, SHUT_RDWR);
+		//sock_release(clihost->sock);
+		//sock_release(clihost->datasock);
 		//clihost->sock = NULL;
 	}
 	mutex_unlock(&clihost->ptr_mutex);
