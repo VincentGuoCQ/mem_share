@@ -135,7 +135,7 @@ int SerRecvThread(void *data) {
 			}
 			//heart beat
 			case NETMSG_SER_REPLY_HEARTBEAT: {
-				serhost->block_available = msg_rpy.info.data.rpy_heartbeat.blk_reset_available;
+				serhost->block_available = msg_rpy.info.data.rpy_heartbeat.blk_rest_available;
 				break;
 			}
 		}
