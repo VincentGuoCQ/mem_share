@@ -33,8 +33,8 @@ static const struct option maplocal_opt [] = {
 	{NULL,	0,	NULL,	0}
 };
 static const struct option allocpage_opt [] = {
-	{"num",		required_argument,	NULL,	'n'},
-	{NULL,	0,	NULL,	0}
+	{"num",		required_argument,	null,	'n'},
+	{null,	0,	null,	0}
 };
 static const struct option freepage_opt [] = {
 	{"num",		required_argument,	NULL,	'n'},

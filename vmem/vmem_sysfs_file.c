@@ -323,12 +323,13 @@ static ssize_t clihost_free_store(struct device *dev, struct device_attribute *a
 	}
 
 	for(nIndex = 0; nIndex < memfree.vpagenum; nIndex++) {
+		printk(KERN_INFO"free page:addr:%x\n", memfree.vpageaddr[nIndex]);
 		nBlkIndex = GET_BLK_INDEX(memfree.vpageaddr[nIndex]);
 		nPageIndex = GET_VPAGE_INDEX(memfree.vpageaddr[nIndex]);
 		if(nBlkIndex > BLK_NUM_MAX || nPageIndex > VPAGE_NUM_IN_BLK)
 		  continue;
 
-		KER_DEBUG(KERN_INFO"blk:%d,vpage:%d\n", nBlkIndex, nPageIndex);
+		printk(KERN_INFO"free page:blk:%d,vpage:%d\n", nBlkIndex, nPageIndex);
 		mutex_lock(&Devices->addr_entry[nBlkIndex].handle_mutex);
 		if(Devices->addr_entry[nBlkIndex].page_bitmap[nPageIndex]) {
 			Devices->addr_entry[nBlkIndex].page_bitmap[nPageIndex] = FALSE;

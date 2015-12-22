@@ -21,7 +21,7 @@ module_param(vmem_minor, int, 0);
 
 //the period for re-calculate the precent of free pages, in seconds
 #define CALCULATE_PERIOD 10
-#define HEARTBEAT_PERIOD 5
+#define HEARTBEAT_PERIOD 15
 //the precentage for the daemon thread to trigger memory borrow
 #define UPPER_LIMIT_PRECENT 0.8
 //the precentage for the daemon thread to trigger memory return
