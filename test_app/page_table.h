@@ -6,8 +6,8 @@ typedef struct {unsigned long vpte_entry;} vpde_t;
 typedef struct {unsigned long vpg_entry;} vpte_t;
 typedef struct {unsigned long vpde_entry;} vpgd_t;
 
-#define PTE_SHIFT	4
-#define PDE_SHIFT	4
+#define PTE_SHIFT	3
+#define PDE_SHIFT	3
 
 #define PG_PRESENT (1UL << 9)
 #define PG_WR (1UL << 8)

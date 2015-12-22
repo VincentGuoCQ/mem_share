@@ -9,3 +9,7 @@ page_table.o:page_table.c
 	$(CC) -c page_table.c
 main.o:main.c
 	$(CC) -c main.c
+
+
+clean:
+	rm *.o

@@ -70,7 +70,8 @@ void print_vpde(vpgd_t *ppgd) {
 		if(ppde->vpte_entry) {
 			for(subIndex = 0; subIndex < (1UL << PTE_SHIFT); subIndex++) {
 				ppte = ((vpte_t *)ppde->vpte_entry + subIndex);
-				printf("\t\taddr:%lx val:%lx\n", ppte, ppte->vpg_entry);
+				printf("\t\taddr:%lx val:%lx attr:%lx\n", ppte, ppte->vpg_entry & VPAGE_MASK,
+							ppte->vpg_entry & VOFFSET_MASK);
 			}
 		}
 	}
