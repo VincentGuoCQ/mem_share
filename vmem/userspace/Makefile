@@ -18,8 +18,9 @@ vmemcli.o:vmemcli.c
 	$(CC) -c vmemcli.c
 vmemcmnd.o:vmemcmd.c
 	$(CC) -c vmemcmd.c
-
-$(vmem_Test):vmem_test.c
-	$(CC) -o $(vmem_Test) vmem_test.c
+vmem_test.o:vmem_test.c
+	$(CC) -c vmem_test.c
+$(vmem_Test):vmem_test.o
+	$(CC) -o $(vmem_Test) vmem_test.o
 clean:
 	rm *.o

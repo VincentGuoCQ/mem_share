@@ -24,12 +24,14 @@ struct MsgMemRet {
 };
 static const struct option writepage_opt [] = {
 	{"addr",	required_argument,	NULL,	'a'},
+	{"num",		required_argument,	NULL,	'n'},
 	{"data",	required_argument,	NULL,	'd'},
 	{NULL,	0,	NULL,	0}
 };
 
 static const struct option readpage_opt [] = {
 	{"addr",	required_argument,	NULL,	'a'},
+	{"num",		required_argument,	NULL,	'n'},
 	{NULL,	0,	NULL,	0}
 };
 
@@ -175,15 +177,13 @@ err_args:
 }
 int vmem_write_page(int argc, char *argv[]) {
 	int fd;
-	int length;
+	unsigned long length;
 	off_t off;
 	int opt = 0, nIndex = 0;
-	char buf[VPAGE_SIZE];
-	char *pageaddr = NULL, *data = NULL;
-
-	memset(buf, 0, VPAGE_SIZE);
+	unsigned char *buf;
+	char *pageaddr = NULL, *data = NULL ,*pagenum = NULL;
 	for(;;) {
-		opt = getopt_long(argc, argv, "a:d:", writepage_opt, NULL);
+		opt = getopt_long(argc, argv, "a:d:n:", writepage_opt, NULL);
 		if(-1 == opt) {
 			break;
 		}
@@ -197,11 +197,17 @@ int vmem_write_page(int argc, char *argv[]) {
 				printf("date:%s\n", optarg);
 				data = optarg;
 				break;
+			case 'n':
+				printf("page num:%s\n", optarg);
+				pagenum = optarg;
+				break;
 		}
 	}
-	if(NULL == pageaddr || NULL == data) {
+	if(NULL == pageaddr || NULL == data || NULL == pagenum) {
 		return -1;
 	}
+	posix_memalign((void **)&buf, 512, VPAGE_SIZE * strtol(pagenum, NULL, 10));
+	memset(buf, 0, VPAGE_SIZE * strtol(pagenum, NULL, 10));
 
 	if((off = strtol(pageaddr, NULL, 16)) < 0) {
 		return -1;
@@ -212,8 +218,8 @@ int vmem_write_page(int argc, char *argv[]) {
 		printf("error opening attribute vmem\n");
 		return -1;
 	}
-	length = pwrite(fd, buf, VPAGE_SIZE, off);
-	if (length != VPAGE_SIZE) {
+	length = pwrite(fd, buf, VPAGE_SIZE * strtol(pagenum, NULL, 10), off);
+	if (length != VPAGE_SIZE * strtol(pagenum, NULL, 10)) {
 		printf("error writing to file, length = %d\n", length);
 		close(fd);
 		return -1;
@@ -224,15 +230,14 @@ int vmem_write_page(int argc, char *argv[]) {
 
 int vmem_read_page(int argc, char *argv[]) {
 	int fd;
-	int length;
+	unsigned long length;
 	off_t off;
 	int opt = 0, nIndex = 0;
-	char *pageaddr = NULL;
-	char data[VPAGE_SIZE];
+	char *pageaddr = NULL, *pagenum = NULL;
+	unsigned char *data = NULL;
 
-	memset(data, 0, VPAGE_SIZE);
 	for(;;) {
-		opt = getopt_long(argc, argv, "a:d:", readpage_opt, NULL);
+		opt = getopt_long(argc, argv, "a:n:", readpage_opt, NULL);
 		if(-1 == opt) {
 			break;
 		}
@@ -242,12 +247,18 @@ int vmem_read_page(int argc, char *argv[]) {
 				printf("page address:%s\n", optarg);
 				pageaddr = optarg;
 				break;
+			case 'n':
+				printf("page num:%s\n", optarg);
+				pagenum = optarg;
+				break;
 		}
 	}
-	if(NULL == pageaddr) {
+	if(NULL == pageaddr || NULL == pagenum) {
 		return -1;
 	}
 
+	posix_memalign((void **)&data, 512, VPAGE_SIZE * strtol(pagenum, NULL, 10));
+	memset(data, 0, VPAGE_SIZE * strtol(pagenum, NULL, 10));
 	if((off = strtol(pageaddr, NULL, 16)) < 0) {
 		return -1;
 	}
@@ -256,7 +267,7 @@ int vmem_read_page(int argc, char *argv[]) {
 		printf("error opening attribute vmem\n");
 		return -1;
 	}
-	length = pread(fd, data, VPAGE_SIZE, off);
+	length = pread(fd, data, VPAGE_SIZE * strtol(pagenum, NULL, 10), off);
 	if (length <= 0) {
 		printf("error writing to file, length = %d\n", length);
 		close(fd);

@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../common.h"
 #include "page_table.h"
 
 vpgd_t global_vpgd = { 0 };
+struct list_head global_page_list;
 
 void main() {
 	vpde_t *ppde = NULL;
@@ -11,17 +13,17 @@ void main() {
 	unsigned long addr = 0;
 	int i = 0;
 	init_vpde(&global_vpgd);
+	list_init(&global_page_list);
 	ppde = (vpde_t *)global_vpgd.vpde_entry;
 	ppte = (vpte_t *)ppde->vpte_entry;
-	//vread(NULL, 0x3800, 0xC11);
-	//vread(NULL, 0x805, 0x34);
 	srand((unsigned)time(NULL));
-	for(i = 0; i < 10; i++) {
-		addr = rand() % (1UL << (PTE_SHIFT + VPAGE_SIZE_SHIFT));
-		vread(NULL, addr, 0x24);
-		sleep(1);
+	for(i = 0; ; i++) {
+		addr = rand() % (3 *(1UL << (PTE_SHIFT + VPAGE_SIZE_SHIFT)));
+		vread(NULL, addr, 0x1);
+		//sleep(1);
+		if('#' == getchar())
+		  break;
 	}
-	//vread(NULL, 0xc53, 0x24);
 	//alloc_page(ppte, 2);
 	print_vpde(&global_vpgd);
 	//free_page(ppte, 2);

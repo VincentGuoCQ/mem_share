@@ -12,6 +12,11 @@
 #include "cmn.h"
 
 extern vpgd_t global_vpgd;
+extern struct list_head global_page_list;
+
+int vmem_read_page(off_t pageaddr, void *data);
+int vmem_write_page(off_t pageaddr, void *data);
+
 inline void create_vpte(vpde_t * ppde) {
 	ppde->vpte_entry = (unsigned long)malloc(sizeof(vpte_t) * (1UL << PTE_SHIFT));
 	memset((void *)ppde->vpte_entry, 0, sizeof(vpte_t) * (1UL << PTE_SHIFT));
@@ -31,7 +36,7 @@ inline void destroy_vpte(vpde_t * ppde) {
 	int nIndex = 0;
 	vpte_t *ppte = (vpte_t *)ppde->vpte_entry;
 	for(nIndex = 0; nIndex < (1UL << PTE_SHIFT); nIndex++) {
-		if((ppte+nIndex)->vpg_entry) {
+		if((ppte+nIndex)->vpg_entry & PG_PRESENT) {
 			free_page(ppte+nIndex, 1);
 		}
 	}
@@ -113,6 +118,9 @@ int write_sysfs_attribute(const char *attr_path, const char *new_value, size_t l
 	close(fd);
 	return length;
 }
+unsigned long page_swap(vpte_t *ppte) {
+	return 0;
+}
 int alloc_page(vpte_t *ppte, unsigned int pagenum) {
 	int i = 0;
 	struct MsgMemAlloc memalloc;
@@ -134,9 +142,17 @@ int alloc_page(vpte_t *ppte, unsigned int pagenum) {
 				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_CLI_ALLOC_PATH);
 	write_sysfs_attribute(path, (char *)&memalloc, sizeof(struct MsgMemAlloc));
 	read_sysfs_attribute(path, (char *)&memret, sizeof(struct MsgMemRet));
-	for(i = 0; i < memret.vpagenum; i++) {
-		 (ppte+i)->vpg_entry = memret.vpageaddr[i];
-		 (ppte+i)->vpg_entry |= PG_PRESENT;
+	//no memory for new pte
+	if(memret.vpagenum == 0) {
+	//	page_swap();
+	}
+	else {
+		for(i = 0; i < memret.vpagenum; i++) {
+			(ppte+i)->vpg_entry = memret.vpageaddr[i];
+			(ppte+i)->vpg_entry |= PG_PRESENT;
+			list_add_tail(&(ppte+i)->ls, &global_page_list);
+
+		}
 	}
 err_args:
 	return ret;
@@ -148,12 +164,14 @@ int vread(void *buf, unsigned long addr, unsigned long count) {
 	vpte_t *ppte = NULL;
 	firpage = ADDR_TO_PAGE_INDEX(addr);
 	pagecount = (((count+(addr & VOFFSET_MASK)-1) & VPAGE_MASK) >> VPAGE_SIZE_SHIFT)+1;
-	printf("firpage:%d, pagecount:%d\n", firpage, pagecount);
+	//printf("firpage:%d, pagecount:%d\n", firpage, pagecount);
+	printf("visit page:%d", firpage);
+	//page fault
 	if(!(ppde+PAGE_TO_PDE(firpage))->vpte_entry) {
 		create_vpte(ppde+PAGE_TO_PDE(firpage));
 	}
 	ppte =(vpte_t *)((ppde+PAGE_TO_PDE(firpage))->vpte_entry); 
-	if(!(ppte+PAGE_TO_PTE(firpage))->vpg_entry) {
+	if(!((ppte+PAGE_TO_PTE(firpage))->vpg_entry & PG_PRESENT)) {
 		alloc_page(ppte+PAGE_TO_PTE(firpage), 1);
 	}
 	if(pagecount > 1) {
@@ -175,6 +193,8 @@ int vread(void *buf, unsigned long addr, unsigned long count) {
 			alloc_page(ppte+PAGE_TO_PTE(firpage+pagecount-1), 1);
 		}
 	}
+	//read page
+	vmem_read_page(addr, buf);
 	return 0;
 }
 
@@ -206,29 +226,21 @@ int free_page(vpte_t *ppte, unsigned int pagenum) {
 err_args:
 	return ret;
 }
-int vmem_write_page() {
+int vmem_write_page(off_t pageaddr, void *data) {
 	int fd;
 	int length;
-	off_t off;
 	int opt = 0, nIndex = 0;
-	char buf[VPAGE_SIZE];
-	char *pageaddr = NULL, *data = NULL;
 
-	memset(buf, 0, VPAGE_SIZE);
-	if(NULL == pageaddr || NULL == data) {
+	if(NULL == data) {
 		return -1;
 	}
 
-	if((off = strtol(pageaddr, NULL, 16)) < 0) {
-		return -1;
-	}
-	memcpy(buf, data, strlen(data));
 	fd = open("/dev/vmem", O_WRONLY);
 	if (fd < 0) {
 		printf("error opening attribute vmem\n");
 		return -1;
 	}
-	length = pwrite(fd, buf, VPAGE_SIZE, off);
+	length = pwrite(fd, data, VPAGE_SIZE, pageaddr);
 	if (length != VPAGE_SIZE) {
 		printf("error writing to file, length = %d\n", length);
 		close(fd);
@@ -238,28 +250,17 @@ int vmem_write_page() {
 	return 0;
 }
 
-int vmem_read_page() {
+int vmem_read_page(off_t pageaddr, void *data) {
 	int fd;
 	int length;
-	off_t off;
 	int opt = 0, nIndex = 0;
-	char *pageaddr = NULL;
-	char data[VPAGE_SIZE];
 
-	memset(data, 0, VPAGE_SIZE);
-	if(NULL == pageaddr) {
-		return -1;
-	}
-
-	if((off = strtol(pageaddr, NULL, 16)) < 0) {
-		return -1;
-	}
 	fd = open("/dev/vmem", O_RDONLY);
 	if (fd < 0) {
 		printf("error opening attribute vmem\n");
 		return -1;
 	}
-	length = pread(fd, data, VPAGE_SIZE, off);
+	length = pread(fd, data, VPAGE_SIZE, pageaddr);
 	if (length <= 0) {
 		printf("error writing to file, length = %d\n", length);
 		close(fd);
