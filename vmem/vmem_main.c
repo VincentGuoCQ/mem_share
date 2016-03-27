@@ -57,7 +57,7 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 		copy_to_user(buf, 
 					dev->addr_entry[nBlkIndex].entry.native.addr + nPageIndex * VPAGE_SIZE,
 					count);
-
+		KER_PRT(KERN_INFO"end to read\n");
 	}
 	//vpage in remote
 	else if(dev->addr_entry[nBlkIndex].remote){
@@ -83,23 +83,20 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
 		up(&serhost->send_sem);
 		KER_DEBUG(KERN_INFO"add read msg in server\n");
-		while(1) {
-			down(&dev->read_semphore);
-			mutex_lock(&Devices->lshd_read_mutex);
-			list_for_each_safe(p, next, &Devices->lshd_read) {
-				msg_rddata = list_entry(p, struct netmsg_data, ls_req); 
-				if(msg_rddata->info.vpageaddr == *ppos) {
-					copy_to_user(buf, msg_rddata->info.data, count);
-					list_del(p);
-					kmem_cache_free(Devices->slab_netmsg_data, msg_rddata);
-					mutex_unlock(&Devices->lshd_read_mutex);
-					KER_PRT(KERN_INFO"end to read:%ld\n", jiffies);
-					return count;
-				}
+		down(&dev->read_semphore);
+		mutex_lock(&Devices->lshd_read_mutex);
+		list_for_each_safe(p, next, &Devices->lshd_read) {
+			msg_rddata = list_entry(p, struct netmsg_data, ls_req); 
+			if(msg_rddata->info.vpageaddr == *ppos) {
+				copy_to_user(buf, msg_rddata->info.data, count);
+				list_del(p);
+				kmem_cache_free(Devices->slab_netmsg_data, msg_rddata);
+				mutex_unlock(&Devices->lshd_read_mutex);
+				KER_PRT(KERN_INFO"end to read\n");
+				break;
 			}
-			mutex_unlock(&Devices->lshd_read_mutex);
 		}
-
+		mutex_unlock(&Devices->lshd_read_mutex);
 	}
 	//handle vpage manange block
 //	if(FALSE == dev->addr_entry[nBlkIndex].vpmb[nPageIndex].access_bit) {
@@ -112,7 +109,6 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 //		}
 //	}
 	mutex_unlock(&dev->addr_entry[nBlkIndex].handle_mutex);
-	KER_PRT(KERN_INFO"end to read\n");
 
 err_null_ptr:
 	return count;
