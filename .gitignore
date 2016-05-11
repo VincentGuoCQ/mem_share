@@ -10,3 +10,5 @@ tags
 *.swo
 *.swm
 *.swn
+*test
+*client

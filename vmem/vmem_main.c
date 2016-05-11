@@ -26,10 +26,7 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 	unsigned int nBlkIndex = 0;
 	unsigned int nPageIndex = 0;
 
-	KER_PRT(KERN_INFO"begin to read\n");
-//	read_swap(buf, count, ppos);
-//	KER_PRT(KERN_INFO"end to read:%ld\n", jiffies);
-//	return count;
+	KER_PRT(KERN_INFO"begin to read:%ld\n", jiffies);
 
 	nBlkIndex = GET_BLK_INDEX(*ppos);
 	nPageIndex = GET_VPAGE_INDEX(*ppos);
@@ -39,10 +36,10 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 		KER_DEBUG(KERN_INFO"vmem:%s:illegal address\n", __FUNCTION__);
 		return ERR_VMEM_ARG_ILLEGAL;
 	}
-//	if(count > VPAGE_SIZE) {
-//		KER_DEBUG(KERN_INFO"vmem:%s:page size too large\n", __FUNCTION__);
-//		return ERR_VMEM_ARG_ILLEGAL;
-//	}
+	if(count > VPAGE_SIZE) {
+		KER_DEBUG(KERN_INFO"vmem:%s:page size too large\n", __FUNCTION__);
+		return ERR_VMEM_ARG_ILLEGAL;
+	}
 	if(!dev->addr_entry[nBlkIndex].inuse) {
 		KER_DEBUG(KERN_INFO"vmem:%s:memory not mapped\n", __FUNCTION__);
 		return ERR_VMEM_NOT_MAPPED;
@@ -51,13 +48,20 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 		KER_DEBUG(KERN_INFO"vmem:%s:page not used\n", __FUNCTION__);
 		return ERR_VMEM_PAGE_NOT_USED;
 	}
-	mutex_lock(&dev->addr_entry[nBlkIndex].handle_mutex);
+//	read_swap(buf, count, ppos);
+//	KER_PRT(KERN_INFO"end to read:%ld\n", jiffies);
+//	return count;
 	//vpage in native
 	if(dev->addr_entry[nBlkIndex].native) {
+		mutex_lock(&dev->addr_entry[nBlkIndex].handle_mutex);
+
 		copy_to_user(buf, 
 					dev->addr_entry[nBlkIndex].entry.native.addr + nPageIndex * VPAGE_SIZE,
 					count);
-		KER_PRT(KERN_INFO"end to read\n");
+
+		mutex_unlock(&dev->addr_entry[nBlkIndex].handle_mutex);
+		KER_PRT(KERN_INFO"end to read:%ld\n", jiffies);
+		return count;
 	}
 	//vpage in remote
 	else if(dev->addr_entry[nBlkIndex].remote){
@@ -83,32 +87,24 @@ static ssize_t vmem_read(struct file *filp, char __user *buf, size_t count, loff
 		mutex_unlock(&serhost->lshd_req_msg_mutex);
 		up(&serhost->send_sem);
 		KER_DEBUG(KERN_INFO"add read msg in server\n");
-		down(&dev->read_semphore);
-		mutex_lock(&Devices->lshd_read_mutex);
-		list_for_each_safe(p, next, &Devices->lshd_read) {
-			msg_rddata = list_entry(p, struct netmsg_data, ls_req); 
-			if(msg_rddata->info.vpageaddr == *ppos) {
-				copy_to_user(buf, msg_rddata->info.data, count);
-				list_del(p);
-				kmem_cache_free(Devices->slab_netmsg_data, msg_rddata);
-				mutex_unlock(&Devices->lshd_read_mutex);
-				KER_PRT(KERN_INFO"end to read\n");
-				break;
+		while(1) {
+			down(&dev->read_semphore);
+			mutex_lock(&Devices->lshd_read_mutex);
+			list_for_each_safe(p, next, &Devices->lshd_read) {
+				msg_rddata = list_entry(p, struct netmsg_data, ls_req); 
+				if(msg_rddata->info.vpageaddr == *ppos) {
+					copy_to_user(buf, msg_rddata->info.data, count);
+					list_del(p);
+					kmem_cache_free(Devices->slab_netmsg_data, msg_rddata);
+					mutex_unlock(&Devices->lshd_read_mutex);
+					KER_PRT(KERN_INFO"end to read:%ld\n", jiffies);
+					return count;
+				}
 			}
+			mutex_unlock(&Devices->lshd_read_mutex);
 		}
-		mutex_unlock(&Devices->lshd_read_mutex);
+
 	}
-	//handle vpage manange block
-//	if(FALSE == dev->addr_entry[nBlkIndex].vpmb[nPageIndex].access_bit) {
-//		dev->addr_entry[nBlkIndex].vpmb[nPageIndex].access_bit = TRUE;
-//	}
-//	else{
-//		if(FALSE == dev->addr_entry[nBlkIndex].vpmb[nPageIndex].pos_bit) {
-//			list_del(&dev->addr_entry[nBlkIndex].vpmb[nPageIndex].ls_list);
-//			list_add_tail(&dev->addr_entry[nBlkIndex].vpmb[nPageIndex].ls_list, &dev->lshd_frequse);
-//		}
-//	}
-	mutex_unlock(&dev->addr_entry[nBlkIndex].handle_mutex);
 
 err_null_ptr:
 	return count;
@@ -119,10 +115,7 @@ static ssize_t vmem_write(struct file *filp, const char __user *buf, size_t coun
 	unsigned int nBlkIndex = 0;
 	unsigned int nPageIndex = 0;
 
-	KER_PRT(KERN_INFO"begin to writen");
-//	write_swap(buf, count, ppos);
-//	KER_PRT(KERN_INFO"end to write:%ld\n", jiffies);
-//	return count;
+	KER_PRT(KERN_INFO"begin to write:%ld\n", jiffies);
 
 	nBlkIndex = GET_BLK_INDEX(*ppos);
 	nPageIndex = GET_VPAGE_INDEX(*ppos);
@@ -132,10 +125,10 @@ static ssize_t vmem_write(struct file *filp, const char __user *buf, size_t coun
 		KER_DEBUG(KERN_INFO"vmem:%s:illegal address\n", __FUNCTION__);
 		return ERR_VMEM_ARG_ILLEGAL;
 	}
-//	if(count > VPAGE_SIZE) {
-//		KER_DEBUG(KERN_INFO"vmem:%s:page size too large\n", __FUNCTION__);
-//		return ERR_VMEM_ARG_ILLEGAL;
-//	}
+	if(count > VPAGE_SIZE) {
+		KER_DEBUG(KERN_INFO"vmem:%s:page size too large\n", __FUNCTION__);
+		return ERR_VMEM_ARG_ILLEGAL;
+	}
 
 	if(!dev->addr_entry[nBlkIndex].inuse) {
 		KER_DEBUG(KERN_INFO"vmem:%s:memory not mapped\n", __FUNCTION__);
@@ -145,11 +138,17 @@ static ssize_t vmem_write(struct file *filp, const char __user *buf, size_t coun
 		KER_DEBUG(KERN_INFO"vmem:%s:page not used\n", __FUNCTION__);
 		return ERR_VMEM_PAGE_NOT_USED;
 	}
-	mutex_lock(&dev->addr_entry[nBlkIndex].handle_mutex);
+//	write_swap(buf, count, ppos);
+//	KER_PRT(KERN_INFO"end to write:%ld\n", jiffies);
+//	return count;
 	//vpage in native
 	if(dev->addr_entry[nBlkIndex].native) {
+		mutex_lock(&dev->addr_entry[nBlkIndex].handle_mutex);
+
 		copy_from_user(dev->addr_entry[nBlkIndex].entry.native.addr + nPageIndex * VPAGE_SIZE,
 					buf, count);
+
+		mutex_unlock(&dev->addr_entry[nBlkIndex].handle_mutex);
 	}
 	//vpage in remote
 	else if(dev->addr_entry[nBlkIndex].remote){
@@ -158,7 +157,6 @@ static ssize_t vmem_write(struct file *filp, const char __user *buf, size_t coun
 		struct server_host *serhost = NULL;
 		serhost = dev->addr_entry[nBlkIndex].entry.vmem.serhost;
 		if(!serhost) {
-			mutex_unlock(&dev->addr_entry[nBlkIndex].handle_mutex);
 			goto err_null_ptr;
 		}
 		msg_req = (struct netmsg_req *)kmem_cache_alloc(serhost->slab_netmsg_req, GFP_USER);
@@ -186,18 +184,7 @@ static ssize_t vmem_write(struct file *filp, const char __user *buf, size_t coun
 		KER_DEBUG(KERN_INFO"add write data in server\n");
 	}
 
-	//handle vpage manange block
-//	if(FALSE == dev->addr_entry[nBlkIndex].vpmb[nPageIndex].access_bit) {
-//		dev->addr_entry[nBlkIndex].vpmb[nPageIndex].access_bit = TRUE;
-//	}
-//	else{
-//		if(FALSE == dev->addr_entry[nBlkIndex].vpmb[nPageIndex].pos_bit) {
-//			list_del(&dev->addr_entry[nBlkIndex].vpmb[nPageIndex].ls_list);
-//			list_add_tail(&dev->addr_entry[nBlkIndex].vpmb[nPageIndex].ls_list, &dev->lshd_frequse);
-//		}
-//	}
-	mutex_unlock(&dev->addr_entry[nBlkIndex].handle_mutex);
-	KER_PRT(KERN_INFO"end to write\n");
+	KER_PRT(KERN_INFO"end to write:%ld\n", jiffies);
 
 err_null_ptr:
 	return count;
@@ -347,8 +334,6 @@ static int setup_device(struct vmem_dev *dev, dev_t devno) {
 	//init list head
 	INIT_LIST_HEAD(&dev->lshd_serhost);
 	INIT_LIST_HEAD(&dev->lshd_read);
-	INIT_LIST_HEAD(&dev->lshd_frequse);
-	INIT_LIST_HEAD(&dev->lshd_swapable);
 
 	dev->devno = devno;
 	//init dev	
