@@ -32,24 +32,6 @@ static const struct option maplocal_opt [] = {
 	{"num",		required_argument,	NULL,	'n'},
 	{NULL,	0,	NULL,	0}
 };
-static const struct option allocpage_opt [] = {
-	{"num",		required_argument,	NULL,	'n'},
-	{NULL,	0,	NULL,	0}
-};
-static const struct option freepage_opt [] = {
-	{"num",		required_argument,	NULL,	'n'},
-	{"addr",	required_argument,	NULL,	'a'},
-	{NULL,	0,	NULL,	0}
-};
-static const struct option readpage_opt [] = {
-	{"addr",	required_argument,	NULL,	'a'},
-	{NULL,	0,	NULL,	0}
-};
-static const struct option writepage_opt [] = {
-	{"addr",	required_argument,	NULL,	'a'},
-	{"data",	required_argument,	NULL,	'd'},
-	{NULL,	0,	NULL,	0}
-};
 static const struct option delser_opt [] = {
 	{"inuse",	no_argument,	NULL,	'i'},
 	{"avail",	no_argument,	NULL,	'a'},
@@ -99,18 +81,18 @@ static const struct command cmds[] = {
 		.help  = NULL,
 		.usage = NULL,
 	},
-	{
-		.name  = "allocpage",
-		.fn	   = vmem_alloc_page,
-		.help  = NULL,
-		.usage = NULL,
-	},
-	{
-		.name  = "freepage",
-		.fn	   = vmem_free_page,
-		.help  = NULL,
-		.usage = NULL,
-	},
+//	{
+//		.name  = "allocpage",
+//		.fn	   = vmem_alloc_page,
+//		.help  = NULL,
+//		.usage = NULL,
+//	},
+//	{
+//		.name  = "freepage",
+//		.fn	   = vmem_free_page,
+//		.help  = NULL,
+//		.usage = NULL,
+//	},
 //	{
 //		.name  = "writepage",
 //		.fn	   = vmem_write_page,

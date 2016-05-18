@@ -21,7 +21,7 @@ module_param(vmem_minor, int, 0);
 
 //the period for re-calculate the precent of free pages, in seconds
 #define CALCULATE_PERIOD 10
-#define HEARTBEAT_PERIOD 5
+#define HEARTBEAT_PERIOD 15
 //the precentage for the daemon thread to trigger memory borrow
 #define UPPER_LIMIT_PRECENT 0.8
 //the precentage for the daemon thread to trigger memory return
@@ -64,6 +64,12 @@ struct vmem_blk {
 	unsigned int blk_remote_index;
 	unsigned long blk_size;
 };
+struct vpage {
+	bool:1;
+	bool pos_bit:1;
+	bool access_bit:1;
+	struct list_head ls_list;
+};
 
 struct cli_blk {
 	struct mutex handle_mutex;
@@ -78,6 +84,7 @@ struct cli_blk {
 	bool remote:1;
 	bool inuse:1;
 	bool native:1;
+	struct vpage vpmb[VPAGE_NUM_IN_BLK];
 	bool page_bitmap[VPAGE_NUM_IN_BLK];
 	unsigned int inuse_page;
 };
@@ -112,6 +119,9 @@ struct vmem_dev {
 	struct kmem_cache *slab_netmsg_data;
 
 	struct vpage_alloc *vpage_alloc;
+
+	struct list_head lshd_frequse;
+	struct list_head lshd_swapable;
 };
 
 int vmem_daemon(void *);
