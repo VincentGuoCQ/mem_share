@@ -1,5 +1,5 @@
-#ifndef MSGFMT_H
-#define MSGFMT_H
+#ifndef TESTMSGFMT_H
+#define TESTMSGFMT_H
 
 #include "../../common.h"
 
@@ -10,23 +10,6 @@
 #define CLIHOST_OP_DEL_SERHOST_INUSE		0x3
 #define CLIHOST_OP_MOD_SERHOST				0x4
 #define CLIHOST_OP_MAP_LOCAL				0x7
-
-struct MsgCliOp {
-	unsigned int op;
-	union {
-		struct {
-			struct in_addr host_addr;
-			unsigned int block_num;
-		} addser;
-		struct {
-			struct in_addr host_addr;
-			unsigned int block_num;
-		} modser;
-		struct {
-			unsigned int block_num;
-		} maplocal;
-	} info;
-};
 
 struct MsgMemAlloc {
 	unsigned int vpagenum;

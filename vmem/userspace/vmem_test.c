@@ -4,22 +4,39 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <unistd.h>
-#include "../../common.h"
+#include "errors.h"
+#include "vmemcmn.h"
+#include "debug.h"
+#include "testmsgfmt.h"
 
 int vmem_write_page(int argc, char *argv[]);
 int vmem_read_page(int argc, char *argv[]);
+int vmem_alloc_page(int argc, char *argv[]);
+int vmem_free_page(int argc, char *argv[]);
 
+#define PRINT_BUF_SIZE 100
 static const struct option writepage_opt [] = {
 	{"addr",	required_argument,	NULL,	'a'},
+	{"num",		required_argument,	NULL,	'n'},
 	{"data",	required_argument,	NULL,	'd'},
 	{NULL,	0,	NULL,	0}
 };
 
 static const struct option readpage_opt [] = {
 	{"addr",	required_argument,	NULL,	'a'},
+	{"num",		required_argument,	NULL,	'n'},
 	{NULL,	0,	NULL,	0}
 };
 
+static const struct option allocpage_opt [] = {
+	{"num",		required_argument,	NULL,	'n'},
+	{NULL,	0,	NULL,	0}
+};
+static const struct option freepage_opt [] = {
+	{"num",		required_argument,	NULL,	'n'},
+	{"addr",	required_argument,	NULL,	'a'},
+	{NULL,	0,	NULL,	0}
+};
 struct command {
 	const char *name;
 	int (*fn)(int argc, char *argv[]);
@@ -35,6 +52,18 @@ static const struct command cmds[] = {
 		.usage = NULL,
 	},
 	{
+		.name  = "allocpage",
+		.fn	   = vmem_alloc_page,
+		.help  = NULL,
+		.usage = NULL,
+	},
+	{
+		.name  = "freepage",
+		.fn	   = vmem_free_page,
+		.help  = NULL,
+		.usage = NULL,
+	},
+	{
 		.name  = "readpage",
 		.fn	   = vmem_read_page,
 		.help  = NULL,
@@ -43,17 +72,188 @@ static const struct command cmds[] = {
 	{NULL, NULL, NULL, NULL}
 };
 
-int vmem_write_page(int argc, char *argv[]) {
+int read_sysfs_attribute(const char *attr_path, char *buf, unsigned int size) {
 	int fd;
 	int length;
+
+	fd = open(attr_path, O_RDONLY);
+	if (fd < 0) {
+		PRINT_INFO("error opening attribute %s\n", attr_path);
+		return -1;
+	}
+	memset(buf, 0, size);
+	length = read(fd, buf, size);
+	if (length != size) {
+		PRINT_INFO("error reading from attribute %s\n", attr_path);
+		close(fd);
+		return -1;
+	}
+	close(fd);
+	return 0;
+}
+int write_sysfs_attribute(const char *attr_path, const char *new_value, size_t len) {
+	int fd;
+	int length;
+
+	fd = open(attr_path, O_WRONLY | O_SYNC);
+	if (fd < 0) {
+		PRINT_INFO("error opening attribute %s\n", attr_path);
+		return -1;
+	}
+	length = write(fd, new_value, len);
+	if (length < 0) {
+		PRINT_INFO("error writing to attribute %s\n", attr_path);
+	}
+	close(fd);
+	return length;
+}
+int print_sysfs_attribute(const char *attr_path) {
+	int fd;
+	int length;
+	char buf[PRINT_BUF_SIZE];
+
+	fd = open(attr_path, O_RDONLY);
+	if (fd < 0) {
+		PRINT_INFO("error opening attribute %s\n", attr_path);
+		return -1;
+	}
+	memset(buf, 0, PRINT_BUF_SIZE);
+	length = read(fd, buf, PRINT_BUF_SIZE-1);
+	while(length > 0) {
+		printf("%s", buf);
+		memset(buf, 0, PRINT_BUF_SIZE);
+		length = read(fd, buf, PRINT_BUF_SIZE-1);
+	}
+	if (length < 0) {
+		PRINT_INFO("error reading from attribute %s\n", attr_path);
+		close(fd);
+		return -1;
+	}
+	close(fd);
+	return 0;
+}
+int vmem_alloc_page(int argc, char *argv[]) {
+	int opt = 0, i = 0;
+	char *pagenum = "1";
+	struct MsgMemAlloc memalloc;
+	struct MsgMemRet memret;
+	int ret = ERR_SUCCESS;
+	char path[SYSFS_PATH_MAX];
+	memset(path, 0, SYSFS_PATH_MAX);
+	memset(&memalloc, 0, sizeof(struct MsgMemAlloc));
+	memset(&memret, 0, sizeof(struct MsgMemRet));
+
+	//option parse
+	for(;;) {
+		opt = getopt_long(argc, argv, "n:", allocpage_opt, NULL);
+		if(-1 == opt) {
+			break;
+		}
+
+		switch(opt) {
+			case 'n':
+				DEBUG_INFO("page num:%s", optarg);
+				pagenum = optarg;
+				break;
+		}
+	}
+	if(NULL == pagenum) {
+		ret = ERR_CLI_ARG_ILLEGAL;
+		goto err_args;
+	}
+
+	//copy argument to structure
+	if((memalloc.vpagenum = atoi(pagenum)) == 0) {
+		ret = ERR_CLI_ARG_ILLEGAL;
+		goto err_args;
+	}
+	
+	//write to file and read from file
+	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
+				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_CLI_ALLOC_PATH);
+	write_sysfs_attribute(path, (char *)&memalloc, sizeof(struct MsgMemAlloc));
+	read_sysfs_attribute(path, (char *)&memret, sizeof(struct MsgMemRet));
+	for(i = 0; i < memret.vpagenum; i++) {
+		printf("page %d:%lx\n", i, memret.vpageaddr[i]);
+	}
+err_args:
+	return ret;
+}
+int vmem_free_page(int argc, char *argv[]) {
+	int opt = 0, nIndex = 0, argvdis = 0;
+	char *pagenum = "1", *vaddrbeg = NULL;
+	struct MsgMemFree memfree;
+	int ret = ERR_SUCCESS;
+	char path[SYSFS_PATH_MAX];
+
+	memset(&memfree, 0, sizeof(struct MsgMemFree));
+	memset(path, 0, SYSFS_PATH_MAX);
+
+	//option parse
+	for(;;) {
+		opt = getopt_long(argc, argv, "n:a:", freepage_opt, NULL);
+		if(-1 == opt) {
+			break;
+		}
+
+		switch(opt) {
+			case 'n':
+				DEBUG_INFO("page num:%s", optarg);
+				pagenum = optarg;
+				break;
+			case 'a':
+				DEBUG_INFO("page addr:%s", optarg);
+				vaddrbeg = optarg;
+				break;
+		}
+	}
+	if(NULL == pagenum) {
+		ret = ERR_CLI_ARG_ILLEGAL;
+		goto err_args;
+	}
+	
+	//copy argument to structure
+	if((memfree.vpagenum = atoi(pagenum)) == 0) {
+		ret = ERR_CLI_ARG_ILLEGAL;
+		goto err_args;
+	}
+	for(argvdis = 0; argvdis < argc; argvdis++) {
+		if(*(argv+argvdis) == vaddrbeg)
+		  break;
+	}
+	if(memfree.vpagenum > argc - argvdis) {
+		ret = ERR_CLI_ARG_ILLEGAL;
+		DEBUG_INFO("page addr not enough");
+		goto err_args;
+	}
+
+	if(memfree.vpagenum > VPAGE_PER_FREE) {
+		ret = ERR_CLI_ARG_ILLEGAL;
+		DEBUG_INFO("page number over limit");
+		goto err_args;
+	}
+
+	for(nIndex = 0; nIndex < memfree.vpagenum; nIndex++) {
+		memfree.vpageaddr[nIndex] = strtol(*(argv+argvdis+nIndex), NULL, 16);
+		//DEBUG_INFO("addr %lx", memfree.vpageaddr[nIndex]);
+	}
+	//write to file
+	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
+				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_CLI_FREE_PATH);
+	write_sysfs_attribute(path, (char *)&memfree, sizeof(struct MsgMemFree));
+
+err_args:
+	return 0;
+}
+int vmem_write_page(int argc, char *argv[]) {
+	int fd;
+	unsigned long length;
 	off_t off;
 	int opt = 0, nIndex = 0;
-	char buf[VPAGE_SIZE];
-	char *pageaddr = NULL, *data = NULL;
-
-	memset(buf, 0, VPAGE_SIZE);
+	unsigned char *buf;
+	char *pageaddr = NULL, *data = NULL ,*pagenum = "1";
 	for(;;) {
-		opt = getopt_long(argc, argv, "a:d:", writepage_opt, NULL);
+		opt = getopt_long(argc, argv, "a:d:n:", writepage_opt, NULL);
 		if(-1 == opt) {
 			break;
 		}
@@ -64,26 +264,42 @@ int vmem_write_page(int argc, char *argv[]) {
 				pageaddr = optarg;
 				break;
 			case 'd':
-				printf("date:%s\n", optarg);
+				printf("data:%s\n", optarg);
 				data = optarg;
+				break;
+			case 'n':
+				printf("page num:%s\n", optarg);
+				pagenum = optarg;
 				break;
 		}
 	}
-	if(NULL == pageaddr || NULL == data) {
+	if(NULL == pageaddr || NULL == pagenum) {
 		return -1;
 	}
+	posix_memalign((void **)&buf, 512, VPAGE_SIZE * strtol(pagenum, NULL, 10));
+	memset(buf, 0, VPAGE_SIZE * strtol(pagenum, NULL, 10));
 
 	if((off = strtol(pageaddr, NULL, 16)) < 0) {
 		return -1;
 	}
-	memcpy(buf, data, strlen(data));
+	if(data) {
+		memcpy(buf, data, strlen(data));
+	}
+	else {
+		srand(time(NULL));
+		for(nIndex=0; nIndex < VPAGE_SIZE * strtol(pagenum, NULL, 10); nIndex++) {
+			*(buf+nIndex) = rand()%255+1;
+			printf("%x", *(buf+nIndex));
+		}
+		printf("\n");
+	}
 	fd = open("/dev/vmem", O_WRONLY);
 	if (fd < 0) {
 		printf("error opening attribute vmem\n");
 		return -1;
 	}
-	length = pwrite(fd, buf, VPAGE_SIZE, off);
-	if (length != VPAGE_SIZE) {
+	length = pwrite(fd, buf, VPAGE_SIZE * strtol(pagenum, NULL, 10), off);
+	if (length != VPAGE_SIZE * strtol(pagenum, NULL, 10)) {
 		printf("error writing to file, length = %d\n", length);
 		close(fd);
 		return -1;
@@ -94,15 +310,14 @@ int vmem_write_page(int argc, char *argv[]) {
 
 int vmem_read_page(int argc, char *argv[]) {
 	int fd;
-	int length;
+	unsigned long length;
 	off_t off;
 	int opt = 0, nIndex = 0;
-	char *pageaddr = NULL;
-	char data[VPAGE_SIZE];
+	char *pageaddr = NULL, *pagenum = "1";
+	unsigned char *data = NULL;
 
-	memset(data, 0, VPAGE_SIZE);
 	for(;;) {
-		opt = getopt_long(argc, argv, "a:d:", readpage_opt, NULL);
+		opt = getopt_long(argc, argv, "a:n:", readpage_opt, NULL);
 		if(-1 == opt) {
 			break;
 		}
@@ -112,12 +327,18 @@ int vmem_read_page(int argc, char *argv[]) {
 				printf("page address:%s\n", optarg);
 				pageaddr = optarg;
 				break;
+			case 'n':
+				printf("page num:%s\n", optarg);
+				pagenum = optarg;
+				break;
 		}
 	}
-	if(NULL == pageaddr) {
+	if(NULL == pageaddr || NULL == pagenum) {
 		return -1;
 	}
 
+	posix_memalign((void **)&data, 512, VPAGE_SIZE * strtol(pagenum, NULL, 10));
+	memset(data, 0, VPAGE_SIZE * strtol(pagenum, NULL, 10));
 	if((off = strtol(pageaddr, NULL, 16)) < 0) {
 		return -1;
 	}
@@ -126,13 +347,16 @@ int vmem_read_page(int argc, char *argv[]) {
 		printf("error opening attribute vmem\n");
 		return -1;
 	}
-	length = pread(fd, data, VPAGE_SIZE, off);
+	length = pread(fd, data, VPAGE_SIZE * strtol(pagenum, NULL, 10), off);
 	if (length <= 0) {
 		printf("error writing to file, length = %d\n", length);
 		close(fd);
 		return -1;
 	}
-	printf("%s\n",data);
+	for(nIndex=0; nIndex < VPAGE_SIZE * strtol(pagenum, NULL, 10); nIndex++) {
+		printf("%x", *(data+nIndex));
+	}
+	printf("\n");
 	close(fd);
 	return 0;
 }

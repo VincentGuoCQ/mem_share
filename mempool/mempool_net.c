@@ -77,7 +77,7 @@ static int CliRecvThread(void *data) {
 
 		len = kernel_recvmsg(clihost->sock, &recvmsg, &recviov, 1, 
 					sizeof(struct req_info), 0);
-        KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_recvmsg en=%d\n",len);
+        KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_recvmsg len=%d, ID=%d\n",len, msg_req.info.msgID);
         //close of client
 		if(len == 0) {
 			break;
@@ -137,7 +137,7 @@ static int CliRecvThread(void *data) {
 				nPageIndex = msg_req.info.data.req_write.pageIndex;
 
 				KER_DEBUG(KERN_INFO"mempool CliSendThread: nBlkIndex %d, nPageIndex %d\n", nBlkIndex, nPageIndex);
-				KER_DEBUG(KERN_INFO"mempool CliSendThread: data %s\n", msg_wrdata->data);
+				KER_DEBUG(KERN_INFO"mempool CliSendThread: data %s\n", msg_wrdata->info.data);
 				mutex_lock(&Devices->blk_mutex);
 				memcpy(Devices->blk[nBlkIndex].blk_addr + nPageIndex * VPAGE_SIZE,
 							msg_wrdata->info.data, VPAGE_SIZE);
