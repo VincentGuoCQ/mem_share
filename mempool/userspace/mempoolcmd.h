@@ -7,6 +7,9 @@
 #include <string.h>
 
 int mempool_add_block(int argc, char *argv[]);
+int mempool_del_block(int argc, char *argv[]);
+int mempool_print_client(int argc, char *argv[]);
+int mempool_print_blk(int argc, char *argv[]);
 
 static const struct option addblk_opt [] = {
 	{"num",	required_argument,	NULL,	'n'},
@@ -29,7 +32,19 @@ static const struct command cmds[] = {
 	},
 	{
 		.name  = "delcli",
-		.fn    = mempool_add_block,
+		.fn    = mempool_del_block,
+		.help  = NULL,
+		.usage = NULL
+	},
+	{
+		.name  = "pricli",
+		.fn    = mempool_print_client,
+		.help  = NULL,
+		.usage = NULL
+	},
+	{
+		.name  = "priblk",
+		.fn    = mempool_print_blk,
 		.help  = NULL,
 		.usage = NULL
 	},
