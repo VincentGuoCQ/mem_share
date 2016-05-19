@@ -8,5 +8,7 @@
 #define SYSFS_DEV_PATH "mempool/mempool"
 
 #define SYSFS_MEMPOOLCFG_PATH "serhost_cfg"
+#define SYSFS_MEMPOOL_PRIBLK_PATH "blk_state"
+#define SYSFS_MEMPOOL_PRICLI_PATH "clihost_state"
 
 #endif //VMEM_COMMON_H

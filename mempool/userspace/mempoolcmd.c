@@ -53,7 +53,55 @@ int write_sysfs_attribute(const char *attr_path, const char *new_value, size_t l
 	return length;
 }
 
+int rdwt_sysfs_attribute(const char *attr_path, char *rdbuf, unsigned int rdsize, char *wtbuf, unsigned int wtsize) {
+	int fd;
+	int length;
 
+	fd = open(attr_path, O_RDWR | O_SYNC);
+	if (fd < 0) {
+		PRINT_INFO("error opening attribute %s\n", attr_path);
+		return -1;
+	}
+
+	length = write(fd, wtbuf, wtsize);
+	if (length < 0) {
+		PRINT_INFO("error writing to attribute %s\n", attr_path);
+		close(fd);
+		return -1;
+	}
+
+	length = read(fd, rdbuf, rdsize);
+	if (length != rdsize) {
+		PRINT_INFO("error reading from attribute %s\n", attr_path);
+		PRINT_INFO("%d\n", length);
+		close(fd);
+		return -1;
+	}
+	close(fd);
+	return 0;
+}
+int read_sysfs_attribute(const char *attr_path, char *buf, unsigned int size) {
+	int fd;
+	int length;
+
+	fd = open(attr_path, O_RDONLY);
+	if (fd < 0) {
+		PRINT_INFO("error opening attribute %s\n", attr_path);
+		return -1;
+	}
+	memset(buf, 0, size);
+	length = read(fd, buf, size);
+	if (length != size) {
+		PRINT_INFO("error reading from attribute %s\n", attr_path);
+		close(fd);
+		return -1;
+	}
+	close(fd);
+	return 0;
+}
+
+int mempool_del_block(int argc, char *argv[]) {
+}
 int mempool_add_block(int argc, char *argv[]) {
 	int opt = 0;
 	char *blknum = NULL;
@@ -99,4 +147,23 @@ int mempool_add_block(int argc, char *argv[]) {
 err_args:
 	free(pSer);
 	return ret;
+}
+
+int mempool_print_client(int argc, char *argv[]) {
+	char path[SYSFS_PATH_MAX];
+	memset(path, 0, SYSFS_PATH_MAX);
+	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
+				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_MEMPOOL_PRICLI_PATH);
+
+	print_sysfs_attribute(path);
+	return 0;
+}
+int mempool_print_blk(int argc, char *argv[]) {
+	char path[SYSFS_PATH_MAX];
+	memset(path, 0, SYSFS_PATH_MAX);
+	snprintf(path, SYSFS_PATH_MAX, "%s/%s/%s/%s", SYSFS_MNT_PATH,
+				SYSFS_BLKDEV_PATH, SYSFS_DEV_PATH, SYSFS_MEMPOOL_PRIBLK_PATH);
+
+	print_sysfs_attribute(path);
+	return 0;
 }

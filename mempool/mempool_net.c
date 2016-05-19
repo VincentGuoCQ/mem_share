@@ -54,14 +54,14 @@ static int CliRecvThread(void *data) {
 	memset(&recvdataiov, 0, sizeof(struct kvec));
 	memset(&sendiov, 0, sizeof(struct kvec));
 	memset(&senddataiov, 0, sizeof(struct kvec));
-    recviov.iov_base = (void *)&msg_req.info;
-    recviov.iov_len = sizeof(struct req_info);
-	sendiov.iov_base = (void *)&msg_rpy.info;
-	sendiov.iov_len = sizeof(struct rpy_info);
-	recvdataiov.iov_base = (void *)&msg_wrdata->info;
-	recvdataiov.iov_len = sizeof(struct data_info);
-	senddataiov.iov_base = (void *)&msg_rddata->info;
-	senddataiov.iov_len = sizeof(struct data_info);
+//  recviov.iov_base = (void *)&msg_req.info;
+//  recviov.iov_len = sizeof(struct req_info);
+//	sendiov.iov_base = (void *)&msg_rpy.info;
+//	sendiov.iov_len = sizeof(struct rpy_info);
+//	recvdataiov.iov_base = (void *)&msg_wrdata->info;
+//	recvdataiov.iov_len = sizeof(struct data_info);
+//	senddataiov.iov_base = (void *)&msg_rddata->info;
+//	senddataiov.iov_len = sizeof(struct data_info);
 
     while (!kthread_should_stop()) {
         //schedule_timeout_interruptible(SCHEDULE_TIME * HZ);
@@ -75,6 +75,8 @@ static int CliRecvThread(void *data) {
 		}
 		mutex_unlock(&clihost->ptr_mutex);
 
+		recviov.iov_base = (void *)&msg_req.info;
+		recviov.iov_len = sizeof(struct req_info);
 		len = kernel_recvmsg(clihost->sock, &recvmsg, &recviov, 1, 
 					sizeof(struct req_info), 0);
         KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_recvmsg len=%d, ID=%d\n",len, msg_req.info.msgID);
@@ -122,6 +124,8 @@ static int CliRecvThread(void *data) {
 			case NETMSG_CLI_REQUEST_WRITE: {
 				unsigned int nBlkIndex = 0, nPageIndex = 0;
 
+				recvdataiov.iov_base = (void *)&msg_wrdata->info;
+				recvdataiov.iov_len = sizeof(struct data_info);
 				len = kernel_recvmsg(clihost->datasock, &recvmsg, &recvdataiov, 1, sizeof(struct data_info), 0);
 				if (len < 0 || len != sizeof(struct data_info)) {
 					KER_DEBUG(KERN_ALERT"mempool handlethread: kernel_recvmsg err, len=%d, buffer=%ld\n",
@@ -165,6 +169,8 @@ static int CliRecvThread(void *data) {
 							VPAGE_SIZE);
 				KER_PRT(KERN_INFO"end to read\n");
 
+				senddataiov.iov_base = (void *)&msg_rddata->info;
+				senddataiov.iov_len = sizeof(struct data_info);
 				len = kernel_sendmsg(clihost->datasock, &senddatamsg, &senddataiov, 1, sizeof(struct data_info));
 
 				if (len < 0 || len != sizeof(struct data_info)) {
@@ -186,6 +192,8 @@ static int CliRecvThread(void *data) {
 				continue;
 		}
 
+		sendiov.iov_base = (void *)&msg_rpy.info;
+		sendiov.iov_len = sizeof(struct rpy_info);
 		len = kernel_sendmsg(clihost->sock, &sendmsg, &sendiov, 1, sizeof(struct rpy_info));
 
 		if(len != sizeof(struct rpy_info)) {

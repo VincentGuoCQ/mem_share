@@ -10,9 +10,7 @@ all:$(mempool_Target)
 $(mempool_Target):$(mempool_Objects) $(mempool_Depdents)
 	$(CC) -o $(mempool_Target) $(mempool_Objects)
 
-mempoolcmnd.o:mempoolcmd.c
-	$(CC) -c mempoolcmd.c
-mempoolcmnd.o:mempoolcmd.c
+mempoolcmd.o:mempoolcmd.c
 	$(CC) -c mempoolcmd.c
 
 clean:
